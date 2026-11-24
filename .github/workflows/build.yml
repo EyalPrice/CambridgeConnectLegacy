@@ -37,7 +37,18 @@ jobs:
       - name: Build
         env:
           CCL_KEYSTORE_PASSWORD: ${{ secrets.CCL_KEYSTORE_PASSWORD }}
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+      - name: Publish build log on failure
+        if: failure() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -300 > build-errors.txt || true
+          gh release view ci-log >/dev/null 2>&1 || gh release create ci-log --prerelease --title "CI build log" --notes "Latest failed build log (for developers)."
+          gh release upload ci-log build.log build-errors.txt --clobber
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk CambridgeConnectLegacy.apk

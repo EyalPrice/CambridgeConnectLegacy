@@ -102,6 +102,8 @@ public final class Upnp {
         public String server = "";
         public String name = "";
         public String model = "";
+        /** True when the device offers the Cambridge (Reciva/UuVol) control service. */
+        public boolean cambridge;
     }
 
     public static final class Result {
@@ -176,7 +178,9 @@ public final class Upnp {
     /** Reads only the name and model of a device, used for the scan list. */
     public static void peek(Found f) {
         try {
-            Document d = parseXml(httpGet(f.location));
+            String xml = httpGet(f.location);
+            f.cambridge = xml.contains("UuVolControl") || xml.contains("RecivaRadio");
+            Document d = parseXml(xml);
             Element root = d.getDocumentElement();
             f.name = text(root, "friendlyName");
             String mfr = text(root, "manufacturer");
@@ -265,6 +269,10 @@ public final class Upnp {
     // ---------------------------------------------------------------- SOAP
 
     public static Result call(Service s, String action, Map<String, String> args) throws IOException {
+        return call(s, action, args, 8000);
+    }
+
+    public static Result call(Service s, String action, Map<String, String> args, int readTimeoutMs) throws IOException {
         StringBuilder body = new StringBuilder();
         body.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
             .append("<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" ")
@@ -279,7 +287,7 @@ public final class Upnp {
 
         HttpURLConnection c = (HttpURLConnection) new URL(s.controlUrl).openConnection();
         c.setConnectTimeout(4000);
-        c.setReadTimeout(8000);
+        c.setReadTimeout(readTimeoutMs);
         c.setRequestMethod("POST");
         c.setDoOutput(true);
         c.setRequestProperty("Content-Type", "text/xml; charset=\"utf-8\"");

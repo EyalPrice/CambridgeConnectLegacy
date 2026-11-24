@@ -1,0 +1,414 @@
+package io.github.eyalprice.ccl
+
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
+
+enum class Conn { NONE, SEARCHING, CONNECTING, OK, UNREACHABLE }
+
+data class Input(val number: Int, val name: String)
+
+data class StereoState(
+    val conn: Conn = Conn.NONE,
+    val name: String = "",
+    val model: String = "",
+    val power: String = "",
+    val sourceNumber: Int = -1,
+    val volume: Int = 0,
+    val volumeMax: Int = 40,
+    val muted: Boolean = false,
+    val transport: String = "",
+    val playback: Reciva.Playback = Reciva.Playback(),
+    val spotifyPos: Int = 0,
+    val spotifyDur: Int = 0,
+    val bass: Int? = null,
+    val treble: Int? = null,
+    val balance: Int? = null,
+    val phaseInverted: Boolean? = null,
+    val filter: String? = null,
+    val inputs: List<Input> = emptyList(),
+    val presetCount: Int = 0,
+    val presets: List<Reciva.Preset> = emptyList(),
+    val found: List<Upnp.Found> = emptyList(),
+    val pro: Boolean = false,
+    val message: String? = null,
+    val about: Map<String, String> = emptyMap(),
+    val languages: List<Pair<String, String>> = emptyList(),
+    val language: String = "",
+    val brightness: Int = 2,
+) {
+    val sourceName: String
+        get() = inputs.firstOrNull { it.number == sourceNumber }?.name ?: Reciva.defaultInputName(sourceNumber)
+    val isRadio get() = sourceNumber == 0
+    val isSpotify get() = sourceNumber == 24 || sourceName.equals("Spotify", true)
+    val isMedia get() = sourceName.contains("media", true) || sourceName.contains("library", true)
+    /** Only these sources carry track details; others (TV, Bluetooth…) may report stale Spotify data. */
+    val hasMetadata get() = isRadio || isSpotify || isMedia
+    val standby get() = power == "IDLE" || power == "OFF"
+}
+
+/** Holds the connection to one stereo and keeps its state fresh by polling. */
+class StereoViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val prefs = app.getSharedPreferences("ccl", Context.MODE_PRIVATE)
+    private val _state = MutableStateFlow(StereoState(pro = prefs.getBoolean("pro", false)))
+    val state: StateFlow<StereoState> = _state
+
+    var device: Upnp.Device? = null
+        private set
+    var navId: String? = null
+        private set
+
+    private var pollJob: Job? = null
+    private var foreground = true
+    private var lastVolumeTouch = 0L
+    private var pendingVolume: Int? = null
+    private var volumeJob: Job? = null
+
+    init {
+        val loc = prefs.getString("location", null)
+        if (loc != null) connect(loc) else search()
+    }
+
+    fun setForeground(fg: Boolean) {
+        foreground = fg
+        if (fg && device != null) startPolling()
+    }
+
+    fun toast(msg: String?) = _state.update { it.copy(message = msg) }
+
+    fun setPro(on: Boolean) {
+        prefs.edit().putBoolean("pro", on).apply()
+        _state.update { it.copy(pro = on) }
+    }
+
+    // ------------------------------------------------------------ discovery & connect
+
+    fun search(ip: String? = null) {
+        _state.update { it.copy(conn = Conn.SEARCHING, found = emptyList()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val found = try {
+                Upnp.discover(getApplication<Application>(), ip, 4000).onEach { Upnp.peek(it) }
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _state.update { it.copy(conn = if (device == null) Conn.NONE else it.conn, found = found) }
+        }
+    }
+
+    fun forget() {
+        prefs.edit().remove("location").apply()
+        pollJob?.cancel()
+        device = null
+        navId = null
+        _state.update { StereoState(pro = it.pro) }
+        search()
+    }
+
+    fun connect(location: String) {
+        _state.update { it.copy(conn = Conn.CONNECTING) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val d = Upnp.loadDevice(location)
+                device = d
+                prefs.edit().putString("location", location).apply()
+                _state.update { it.copy(conn = Conn.OK, name = d.friendlyName, model = "${d.manufacturer} ${d.modelName}".trim()) }
+                registerNavigator()
+                loadStatic()
+                startPolling()
+            } catch (e: Exception) {
+                _state.update { it.copy(conn = Conn.UNREACHABLE) }
+            }
+        }
+    }
+
+    private fun service(action: String): Upnp.Service? = device?.services?.firstOrNull { it.action(action) != null }
+
+    fun has(action: String) = service(action) != null
+
+    /** Runs a command, filling InstanceID / Channel / NavigatorId automatically. */
+    fun callBlocking(action: String, vararg args: Pair<String, String>, timeoutMs: Int = 8000): Upnp.Result? {
+        val s = service(action) ?: return null
+        val map = LinkedHashMap<String, String>()
+        for (a in s.action(action).inArgs()) {
+            val given = args.firstOrNull { it.first == a.name }?.second
+            map[a.name] = given ?: when (a.name) {
+                "InstanceID" -> "0"
+                "Channel" -> "Master"
+                "NavigatorId" -> navId ?: ""
+                "Speed" -> "1"
+                else -> ""
+            }
+        }
+        return try { Upnp.call(s, action, map, timeoutMs) } catch (e: Exception) { null }
+    }
+
+    private fun out(action: String, vararg args: Pair<String, String>): String? =
+        callBlocking(action, *args)?.takeIf { it.ok() }?.out?.values?.firstOrNull()
+
+    fun send(action: String, vararg args: Pair<String, String>, after: (() -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val r = callBlocking(action, *args)
+            if (r == null || !r.ok()) toast("The stereo didn't accept “$action”.")
+            after?.invoke()
+            refreshOnce()
+        }
+    }
+
+    private fun registerNavigator() {
+        val name = prefs.getString("navName", null) ?: ("CCL-" + UUID.randomUUID().toString().take(8)).also {
+            prefs.edit().putString("navName", it).apply()
+        }
+        val existing = callBlocking("IsRegisteredNavigatorName", "NavigatorName" to name)
+        navId = if (existing != null && existing.out["IsRegistered"] == "1") existing.out["RetNavigatorId"]
+        else callBlocking("RegisterNamedNavigator", "NewNavigatorName" to name)?.out?.get("RetNavigatorId")
+    }
+
+    // ------------------------------------------------------------ static data
+
+    fun loadStatic() {
+        val numbers = out("GetAudioSourcesByNumber")?.split(',')?.mapNotNull { it.trim().toIntOrNull() } ?: emptyList()
+        val inputs = numbers.map { n ->
+            val nm = out("GetAudioSourceName", "InAudioSource" to n.toString())
+            Input(n, if (nm.isNullOrBlank() || nm == "(none)") Reciva.defaultInputName(n) else nm)
+        }
+        val max = out("GetVolumeMax")?.toIntOrNull() ?: 40
+        val about = linkedMapOf<String, String>()
+        out("GetCurrentServicePack")?.let { about["Firmware"] = it }
+        out("GetHardwareConfig")?.let { about["Hardware"] = it }
+        out("GetSerialNumber")?.let { about["Serial number"] = if (it.length > 3) "•••" + it.takeLast(3) else it }
+        device?.let { about["Model"] = "${it.modelName} ${it.modelNumber}".trim() }
+        val langs = callBlocking("GetDisplayLanguages")?.out
+        val names = langs?.get("RetLanguageListValue")?.split(',') ?: emptyList()
+        val codes = langs?.get("RetIsoCodeListValue")?.split(',') ?: emptyList()
+        val language = out("GetCurrentDisplayLanguage") ?: ""
+        _state.update {
+            it.copy(inputs = inputs, volumeMax = max, about = about,
+                languages = names.zip(codes), language = language,
+                brightness = prefs.getInt("brightness", 2))
+        }
+        loadPresets()
+        loadSound()
+    }
+
+    fun loadPresets() {
+        val count = out("GetNumberOfPresets")?.toIntOrNull() ?: 0
+        val list = Reciva.presets(out("GetPresetList", "Start" to "1", "End" to count.coerceAtLeast(1).toString()))
+        _state.update { it.copy(presetCount = count, presets = list) }
+    }
+
+    fun loadSound() {
+        _state.update {
+            it.copy(
+                bass = out("GetToneCtrlBass")?.toIntOrNull(),
+                treble = out("GetToneCtrlTreble")?.toIntOrNull(),
+                balance = out("GetBalanceDB")?.toIntOrNull(),
+                phaseInverted = out("GetAudioPhaseInverted")?.let { v -> v == "1" || v.equals("true", true) },
+                filter = out("GetAudioFilter"),
+            )
+        }
+    }
+
+    // ------------------------------------------------------------ polling
+
+    private fun startPolling() {
+        if (pollJob?.isActive == true) return
+        pollJob = viewModelScope.launch(Dispatchers.IO) {
+            var failures = 0
+            while (isActive) {
+                if (!foreground) { delay(1000); continue }
+                val ok = refreshOnce()
+                failures = if (ok) 0 else failures + 1
+                if (failures >= 2) _state.update { it.copy(conn = Conn.UNREACHABLE) }
+                delay(if (ok) 1500 else 4000)
+            }
+        }
+    }
+
+    /** Reads the live status. Returns false when the stereo did not answer. */
+    private suspend fun refreshOnce(): Boolean = withContext(Dispatchers.IO) {
+        val power = out("GetPowerState") ?: return@withContext false
+        val src = out("GetAudioSourceByNumber")?.toIntOrNull() ?: -1
+        val volTouched = System.currentTimeMillis() - lastVolumeTouch < 2500
+        val vol = if (volTouched) null else out("GetVolume")?.toIntOrNull()
+        val mute = out("GetMute")
+        val transport = out("GetTransportInfo") ?: ""
+        val pb = Reciva.playback(out("GetPlaybackDetails"))
+        var pos = 0
+        var dur = 0
+        if (src == 24) {
+            callBlocking("GetSpotifyPlaybackPosition")?.out?.let {
+                pos = it["Position"]?.toIntOrNull() ?: 0
+                dur = it["Duration"]?.toIntOrNull() ?: 0
+            }
+        }
+        _state.update {
+            it.copy(conn = Conn.OK, power = power, sourceNumber = src,
+                volume = vol ?: it.volume, muted = mute == "1" || mute.equals("true", true),
+                transport = transport, playback = pb, spotifyPos = pos, spotifyDur = dur)
+        }
+        true
+    }
+
+    // ------------------------------------------------------------ controls
+
+    fun setVolume(v: Int) {
+        val target = v.coerceIn(0, _state.value.volumeMax)
+        if (target == _state.value.volume && pendingVolume == null) return
+        lastVolumeTouch = System.currentTimeMillis()
+        _state.update { it.copy(volume = target) }
+        pendingVolume = target
+        if (volumeJob?.isActive == true) return
+        volumeJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val t = pendingVolume ?: break
+                pendingVolume = null
+                callBlocking("SetVolume", "DesiredVolume" to t.toString())
+                lastVolumeTouch = System.currentTimeMillis()
+            }
+        }
+    }
+
+    fun volumeStep(d: Int) = setVolume(_state.value.volume + d)
+
+    fun toggleMute() {
+        val m = !_state.value.muted
+        _state.update { it.copy(muted = m) }
+        send("SetMute", "DesiredMute" to if (m) "1" else "0")
+    }
+
+    fun power(target: String) {
+        _state.update { it.copy(power = target) }
+        send("SetPowerState", "NewPowerStateValue" to target)
+    }
+
+    fun togglePower() = power(if (_state.value.standby) "ON" else "IDLE")
+
+    fun selectInput(n: Int) {
+        _state.update { it.copy(sourceNumber = n) }
+        if (_state.value.standby) callAsync { callBlocking("SetPowerState", "NewPowerStateValue" to "ON") }
+        send("SetAudioSourceByNumber", "NewAudioSourceValue" to n.toString())
+    }
+
+    fun renameInput(n: Int, name: String) =
+        send("SetAudioSourceName", "InAudioSource" to n.toString(), "InAudioSourceName" to name) {
+            _state.update { s -> s.copy(inputs = s.inputs.map { if (it.number == n) it.copy(name = name) else it }) }
+        }
+
+    fun playPreset(n: Int) = send("PlayPreset", "NewPresetNumberValue" to n.toString())
+
+    fun saveCurrentAsPreset(n: Int) =
+        send("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString()) { loadPresets() }
+
+    fun deletePreset(n: Int) = send("DeletePreset", "PresetNumber" to n.toString()) { loadPresets() }
+
+    fun transport(action: String) = send(action)
+
+    fun play() = send("Play", "Speed" to "1")
+
+    fun setTone(which: String, value: Int) {
+        if (which == "bass") _state.update { it.copy(bass = value) } else _state.update { it.copy(treble = value) }
+        val action = if (which == "bass") "SetToneCtrlBass" else "SetToneCtrlTreble"
+        val arg = if (which == "bass") "NewToneCtrlBassValue" else "NewToneCtrlTrebleValue"
+        send(action, arg to value.toString()) { loadSound() }
+    }
+
+    /** Balance units differ between firmware versions: try a step of 1, then 1/256 dB units. */
+    fun balanceStep(dir: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val cur = out("GetBalanceDB")?.toIntOrNull() ?: 0
+            callBlocking("SetBalanceDB", "DesiredBalanceDB" to (cur + dir).toString())
+            var now = out("GetBalanceDB")?.toIntOrNull() ?: cur
+            if (now == cur) {
+                callBlocking("SetBalanceDB", "DesiredBalanceDB" to (cur + dir * 256).toString())
+                now = out("GetBalanceDB")?.toIntOrNull() ?: cur
+                if (now == cur) toast("Balance isn't adjustable on this stereo.")
+            }
+            _state.update { it.copy(balance = now) }
+        }
+    }
+
+    fun setPhase(on: Boolean) {
+        _state.update { it.copy(phaseInverted = on) }
+        send("SetAudioPhaseInverted", "NewAudioPhaseInverted" to if (on) "1" else "0") { loadSound() }
+    }
+
+    fun setFilter(f: String) = send("SetAudioFilter", "NewAudioFilter" to f) { loadSound() }
+
+    fun setBrightness(level: Int) {
+        prefs.edit().putInt("brightness", level).apply()
+        _state.update { it.copy(brightness = level) }
+        send("SetBrightnessLevel", "NewBrightnessLevel" to level.toString())
+    }
+
+    fun setLanguage(code: String) = send("SetCurrentDisplayLanguage", "NewIsoCodeValue" to code) {
+        _state.update { s -> s.copy(language = s.languages.firstOrNull { it.second == code }?.first ?: s.language) }
+    }
+
+    fun setShuffle(on: Boolean) = send("SetShuffle", "aShuffle" to if (on) "1" else "0")
+    fun setRepeat(on: Boolean) = send("SetRepeat", "aRepeat" to if (on) "1" else "0")
+
+    private fun callAsync(block: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) { block() }
+    }
+
+    // ------------------------------------------------------------ menus, search, queue
+
+    suspend fun menuTop(): Reciva.Menu? = withContext(Dispatchers.IO) {
+        callBlocking("GoTopAndGetResponse")
+        currentMenu()
+    }
+
+    suspend fun currentMenu(): Reciva.Menu? = withContext(Dispatchers.IO) {
+        val r = callBlocking("GetMenuAtOffset", "Count" to "100", "Offset" to "0")
+        Reciva.menu(r?.out?.get("RetMenuXML")) ?: Reciva.menu(out("GetMenu"))
+    }
+
+    /** Selects an item. Returns the new menu, or null when the item started playback. */
+    suspend fun menuSelect(item: Reciva.MenuItem): Reciva.Menu? = withContext(Dispatchers.IO) {
+        val before = currentMenu()
+        callBlocking("SelectItemAndGetResponse", "NewMenuItemId" to item.id.toString(), timeoutMs = 20000)
+        val after = currentMenu()
+        if (after == null || (before != null && after.id == before.id && after.items == before.items)) null else after
+    }
+
+    suspend fun menuBack(): Reciva.Menu? = withContext(Dispatchers.IO) {
+        callBlocking("GoBackAndGetResponse")
+        currentMenu()
+    }
+
+    data class SearchResult(val stations: List<Reciva.Station>, val raw: String, val error: String?)
+
+    suspend fun searchStations(query: String): SearchResult = withContext(Dispatchers.IO) {
+        val r = callBlocking("SearchForStationByName", "StationName" to query, timeoutMs = 30000)
+        if (r == null) return@withContext SearchResult(emptyList(), "", "The stereo didn't answer in time. Try again.")
+        if (!r.ok()) return@withContext SearchResult(emptyList(), r.body, "Search isn't available right now.")
+        val raw = r.out["ResultXML"] ?: ""
+        SearchResult(Reciva.stations(raw), raw, null)
+    }
+
+    fun playStation(id: String) = send("SetStationId", "NewStationIdValue" to id)
+
+    suspend fun queue(): List<Reciva.Track> = withContext(Dispatchers.IO) {
+        Reciva.tracks(out("GetPlaylistTrackDetails", "StartTrackID" to "0", "TrackCount" to "100"))
+    }
+
+    fun queueDelete(id: Int) = send("DeletePlaylistTrack", "PlaylistTrackID" to id.toString())
+    fun queueJump(id: Int) = send("SetCurrentPlaylistTrack", "CurrentPlaylistTrackID" to id.toString())
+
+    override fun onCleared() {
+        pollJob?.cancel()
+        super.onCleared()
+    }
+}
