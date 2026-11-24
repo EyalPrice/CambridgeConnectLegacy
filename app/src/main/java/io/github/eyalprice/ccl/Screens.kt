@@ -767,8 +767,19 @@ fun WelcomeScreen(st: StereoState, vm: StereoViewModel) {
                         }
                     }
                 }
-                if (st.pro) others.forEach { f ->
-                    TextButton(onClick = { vm.connect(f.location) }) { Text("${f.name} · ${f.model}", color = C.Muted) }
+                if (st.searchInfo.isNotBlank() && st.conn == Conn.NONE) {
+                    Text(st.searchInfo, color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                }
+                if (others.isNotEmpty()) {
+                    var showOthers by remember { mutableStateOf(false) }
+                    TextButton(onClick = { showOthers = !showOthers }) {
+                        Text(if (showOthers) "Hide other devices" else "Show ${others.size} other device(s)", color = C.Accent)
+                    }
+                    if (showOthers) others.forEach { f ->
+                        TextButton(onClick = { vm.connect(f.location) }) {
+                            Text("${f.name.ifBlank { "(no name)" }} · ${f.model}", color = C.Text, textAlign = androidx.compose.ui.text.style.TextAlign.Start)
+                        }
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 GhostButton("Search again", { vm.search() }, Modifier.fillMaxWidth())

@@ -179,7 +179,9 @@ public final class Upnp {
     public static void peek(Found f) {
         try {
             String xml = httpGet(f.location);
-            f.cambridge = xml.contains("UuVolControl") || xml.contains("RecivaRadio");
+            String all = (xml + " " + f.server).toLowerCase(Locale.ROOT);
+            f.cambridge = all.contains("uuvolcontrol") || all.contains("reciva") || all.contains("uuvol")
+                    || all.contains("cambridge") || all.contains("minx") || all.contains("np30") || all.contains("stream magic");
             Document d = parseXml(xml);
             Element root = d.getDocumentElement();
             f.name = text(root, "friendlyName");

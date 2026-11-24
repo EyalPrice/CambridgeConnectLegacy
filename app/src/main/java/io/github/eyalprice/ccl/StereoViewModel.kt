@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +42,8 @@ data class StereoState(
     val presetCount: Int = 0,
     val presets: List<Reciva.Preset> = emptyList(),
     val found: List<Upnp.Found> = emptyList(),
+    /** Result line of the last network search, shown on the first-start screen. */
+    val searchInfo: String = "",
     val pro: Boolean = false,
     val message: String? = null,
     val about: Map<String, String> = emptyMap(),
@@ -80,7 +83,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         val loc = prefs.getString("location", null)
-        if (loc != null) connect(loc) else search()
+        if (loc != null) viewModelScope.launch(Dispatchers.IO) { if (!connectNow(loc)) search() } else search()
     }
 
     fun setForeground(fg: Boolean) {
@@ -100,12 +103,20 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun search(ip: String? = null) {
         _state.update { it.copy(conn = Conn.SEARCHING, found = emptyList()) }
         viewModelScope.launch(Dispatchers.IO) {
+            var info: String
             val found = try {
-                Upnp.discover(getApplication<Application>(), ip, 4000).onEach { Upnp.peek(it) }
+                val list = Upnp.discover(getApplication<Application>(), ip, 5000)
+                // Read each device's description in parallel so one slow device doesn't hold up the rest.
+                list.map { f -> async { Upnp.peek(f) } }.forEach { it.await() }
+                val cam = list.count { it.cambridge }
+                info = if (list.isEmpty()) "No devices answered on this Wi-Fi."
+                else "${list.size} device(s) answered, $cam look like Cambridge Audio."
+                list.sortedByDescending { it.cambridge }
             } catch (e: Exception) {
+                info = "Search failed: ${e.message}"
                 emptyList()
             }
-            _state.update { it.copy(conn = if (device == null) Conn.NONE else it.conn, found = found) }
+            _state.update { it.copy(conn = if (device == null) Conn.NONE else it.conn, found = found, searchInfo = info) }
         }
     }
 
