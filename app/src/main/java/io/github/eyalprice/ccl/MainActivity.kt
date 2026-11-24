@@ -8,7 +8,10 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -35,11 +38,11 @@ enum class Tab(val label: String, val title: String) {
     MUSIC("Music", "Music"), PRO("Pro", "Pro")
 }
 
-enum class Page(val title: String) { SOUND("Sound"), SETTINGS("Settings"), QUEUE("Queue"), CHECK("Stereo check"), EXPLORER("Commands") }
+enum class Page(val title: String) { SOUND("Sound"), SETTINGS("Settings"), QUEUE("Queue"), CHECK("Stereo check"), EXPLORER("Commands"), REMOTE("Remote") }
 
 class MainActivity : ComponentActivity() {
 
-    private val vm: StereoViewModel by viewModels()
+    private val vm: StereoViewModel get() = stereo
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +101,21 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long) {
     val snack = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { update = newerRelease(versionCode) }
+
+    // Lock-screen controls and locked volume keys need the media service; Android 13+ also asks for notifications.
+    val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(st.conn, st.standby) {
+        if (st.conn == Conn.OK && !st.standby) {
+            if (Build.VERSION.SDK_INT >= 33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                val p = vm.savedPrefs()
+                if (!p.getBoolean("askedNotify", false)) {
+                    p.edit().putBoolean("askedNotify", true).apply()
+                    askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            StereoService.start(ctx)
+        }
+    }
     LaunchedEffect(st.message) { st.message?.let { snack.showSnackbar(it); vm.toast(null) } }
     LaunchedEffect(st.pro) { if (!st.pro && tab == Tab.PRO) tab = Tab.PLAY }
     BackHandler(enabled = page != null) { page = null }
@@ -133,12 +151,13 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long) {
                     Page.QUEUE -> QueueScreen(st, vm)
                     Page.CHECK -> CheckScreen(vm, version)
                     Page.EXPLORER -> ExplorerScreen(vm)
+                    Page.REMOTE -> RemoteScreen(vm)
                     null -> when (tab) {
                         Tab.PLAY -> NowPlayingScreen(st, vm, onInputs = { tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE })
                         Tab.INPUTS -> InputsScreen(st, vm) { }
                         Tab.RADIO -> RadioScreen(st, vm) { }
                         Tab.MUSIC -> MusicScreen(vm, onPlaying = { tab = Tab.PLAY }, onQueue = { page = Page.QUEUE })
-                        Tab.PRO -> ProScreen(st, vm, onCheck = { page = Page.CHECK }, onExplorer = { page = Page.EXPLORER })
+                        Tab.PRO -> ProScreen(st, vm, onCheck = { page = Page.CHECK }, onExplorer = { page = Page.EXPLORER }, onRemote = { page = Page.REMOTE })
                     }
                 }
             }

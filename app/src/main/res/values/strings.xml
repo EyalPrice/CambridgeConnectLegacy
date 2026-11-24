@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Volume, play/pause, inputs and power for your stereo</string>
+    <!-- Set to your Buy Me a Coffee page (e.g. https://buymeacoffee.com/yourname). Empty = "coming soon". -->
+    <string name="donate_url" translatable="false"></string>
+</resources>

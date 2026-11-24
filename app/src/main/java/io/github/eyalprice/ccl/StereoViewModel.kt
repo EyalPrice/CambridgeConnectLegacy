@@ -72,6 +72,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     private var pollJob: Job? = null
     private var foreground = true
+    /** True while the lock-screen service runs; polling then continues slowly in the background. */
+    @Volatile var serviceActive = false
     private var lastVolumeTouch = 0L
     private var pendingVolume: Int? = null
     private var volumeJob: Job? = null
@@ -117,21 +119,35 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun connect(location: String) {
+        viewModelScope.launch(Dispatchers.IO) { connectNow(location) }
+    }
+
+    private suspend fun connectNow(location: String): Boolean = withContext(Dispatchers.IO) {
         _state.update { it.copy(conn = Conn.CONNECTING) }
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val d = Upnp.loadDevice(location)
-                device = d
-                prefs.edit().putString("location", location).apply()
-                _state.update { it.copy(conn = Conn.OK, name = d.friendlyName, model = "${d.manufacturer} ${d.modelName}".trim()) }
-                registerNavigator()
-                loadStatic()
-                startPolling()
-            } catch (e: Exception) {
-                _state.update { it.copy(conn = Conn.UNREACHABLE) }
-            }
+        try {
+            val d = Upnp.loadDevice(location)
+            device = d
+            prefs.edit().putString("location", location).apply()
+            _state.update { it.copy(conn = Conn.OK, name = d.friendlyName, model = "${d.manufacturer} ${d.modelName}".trim()) }
+            registerNavigator()
+            loadStatic()
+            refreshOnce()
+            startPolling()
+            true
+        } catch (e: Exception) {
+            _state.update { it.copy(conn = Conn.UNREACHABLE) }
+            false
         }
     }
+
+    /** Used by the widget and lock-screen controls when the app process was started cold. */
+    suspend fun connectIfNeeded(): Boolean {
+        if (device != null) return true
+        val loc = prefs.getString("location", null) ?: return false
+        return connectNow(loc)
+    }
+
+    fun savedPrefs() = prefs
 
     private fun service(action: String): Upnp.Service? = device?.services?.firstOrNull { it.action(action) != null }
 
@@ -227,11 +243,11 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         pollJob = viewModelScope.launch(Dispatchers.IO) {
             var failures = 0
             while (isActive) {
-                if (!foreground) { delay(1000); continue }
+                if (!foreground && !serviceActive) { delay(1000); continue }
                 val ok = refreshOnce()
                 failures = if (ok) 0 else failures + 1
                 if (failures >= 2) _state.update { it.copy(conn = Conn.UNREACHABLE) }
-                delay(if (ok) 1500 else 4000)
+                delay(if (!ok) 4000 else if (foreground) 1500 else 5000)
             }
         }
     }
@@ -406,6 +422,35 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun queueDelete(id: Int) = send("DeletePlaylistTrack", "PlaylistTrackID" to id.toString())
     fun queueJump(id: Int) = send("SetCurrentPlaylistTrack", "CurrentPlaylistTrackID" to id.toString())
+
+    // ------------------------------------------------------------ virtual remote
+
+    private val keyAliases = mapOf(
+        "SELECT" to listOf("SELECT", "OK", "ENTER"), "BACK" to listOf("BACK", "RETURN"),
+        "PREV" to listOf("PREVIOUS", "PREV"), "VOLUP" to listOf("VOLUME_UP", "VOLUP", "VOL_UP"),
+        "VOLDOWN" to listOf("VOLUME_DOWN", "VOLDOWN", "VOL_DOWN"), "PLAY" to listOf("PLAY", "PLAY_PAUSE", "PLAYPAUSE"),
+    )
+
+    /**
+     * Sends a handset key. The firmware's key names aren't documented, so a few spellings are tried
+     * and the first one the stereo accepts is remembered.
+     */
+    suspend fun pressKey(key: String): String = withContext(Dispatchers.IO) {
+        if (!has("KeyPressed")) return@withContext "This stereo has no remote-key command."
+        prefs.getString("key_$key", null)?.split('|')?.takeIf { it.size == 2 }?.let { (name, dur) ->
+            val r = callBlocking("KeyPressed", "Key" to name, "Duration" to dur)
+            if (r != null && r.ok()) return@withContext "Sent $key"
+        }
+        val names = (keyAliases[key] ?: listOf(key)).flatMap { listOf(it, "KEY_$it", it.lowercase().replaceFirstChar { c -> c.uppercase() }) }
+        for (name in names) for (dur in listOf("SHORT", "0", "100")) {
+            val r = callBlocking("KeyPressed", "Key" to name, "Duration" to dur)
+            if (r != null && r.ok()) {
+                prefs.edit().putString("key_$key", "$name|$dur").apply()
+                return@withContext "Sent $key (as “$name”)"
+            }
+        }
+        "The stereo didn't accept the $key key."
+    }
 
     override fun onCleared() {
         pollJob?.cancel()

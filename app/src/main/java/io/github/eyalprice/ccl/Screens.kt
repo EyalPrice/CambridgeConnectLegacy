@@ -507,6 +507,17 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
             GhostButton("Request a feature", { issue("enhancement") }, Modifier.weight(1f))
         }
         Text("Opens a pre-filled form on GitHub (free account needed).", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        SectionLabel("Support the project")
+        Panel(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Text("Cambridge Connect Legacy is a hobby project, made for fun and out of a love of good sound, so that great stereos keep working long after their official apps stop. It's free, with no ads and no tracking. If it's made your listening a bit better and you'd like to say thanks, a small donation would mean a lot. Enjoy the music!",
+                    color = C.Text, fontSize = 14.sp, lineHeight = 21.sp)
+                Spacer(Modifier.height(12.dp))
+                val donate = ctx.getString(R.string.donate_url)
+                if (donate.isNotBlank()) PrimaryButton("Buy me a coffee", { open(donate) })
+                else Text("Donation page coming soon.", color = C.Muted, fontSize = 13.sp)
+            }
+        }
         SectionLabel("About the app")
         Panel(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -534,7 +545,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
 // ====================================================================== Pro
 
 @Composable
-fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplorer: () -> Unit) {
+fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplorer: () -> Unit, onRemote: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Panel(Modifier.fillMaxWidth().clickable(onClick = onCheck), active = true) {
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -558,6 +569,17 @@ fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplo
                 Text("›", color = C.Muted)
             }
         }
+        Spacer(Modifier.height(10.dp))
+        Panel(Modifier.fillMaxWidth().clickable(onClick = onRemote)) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.SettingsRemote, null, tint = C.Accent)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("Virtual remote", color = C.Text, fontWeight = FontWeight.SemiBold)
+                    Text("The same keys as the stereo's handset", color = C.Muted, fontSize = 12.sp)
+                }
+                Text("›", color = C.Muted)
+            }
+        }
         SectionLabel("Network devices")
         GhostButton("Search the network", { vm.search() }, Modifier.fillMaxWidth())
         st.found.forEach { f ->
@@ -566,7 +588,7 @@ fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplo
         }
         SectionLabel("Zones")
         Text("This stereo has a single zone.", color = C.Muted, fontSize = 13.sp)
-        Text("Virtual remote: coming in the next update.", color = C.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp, bottom = 24.dp))
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -757,5 +779,53 @@ fun WelcomeScreen(st: StereoState, vm: StereoViewModel) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
         GhostButton("Search this address", { if (ip.isNotBlank()) vm.search(ip.trim()) }, Modifier.fillMaxWidth().padding(top = 8.dp))
         Text("Unofficial app · not affiliated with Cambridge Audio", color = C.Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 24.dp))
+    }
+}
+
+
+// ====================================================================== Virtual remote
+
+@Composable
+fun RemoteScreen(vm: StereoViewModel) {
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf("Keys are sent exactly like the stereo's handset.") }
+    fun key(k: String) { scope.launch { status = "Sending $k…"; status = vm.pressKey(k) } }
+    @Composable
+    fun K(label: String, k: String, modifier: Modifier = Modifier) {
+        Box(modifier.height(52.dp).clip(RoundedCornerShape(12.dp)).background(C.Line).clickable { key(k) },
+            contentAlignment = Alignment.Center) { Text(label, color = C.Text, fontSize = 14.sp) }
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+        Text(status, color = C.Accent, fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
+        Panel(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    K("Info", "INFO", Modifier.weight(1f)); K("Home", "HOME", Modifier.weight(1f)); K("Menu", "MENU", Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(16.dp))
+                Box(Modifier.size(210.dp).clip(CircleShape).background(C.Surface2).border(1.dp, C.Line2, CircleShape)) {
+                    IconButton({ key("UP") }, Modifier.align(Alignment.TopCenter).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = C.Text) }
+                    IconButton({ key("DOWN") }, Modifier.align(Alignment.BottomCenter).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = C.Text) }
+                    IconButton({ key("LEFT") }, Modifier.align(Alignment.CenterStart).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowLeft, "Left", tint = C.Text) }
+                    IconButton({ key("RIGHT") }, Modifier.align(Alignment.CenterEnd).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowRight, "Right", tint = C.Text) }
+                    Box(Modifier.align(Alignment.Center).size(78.dp).clip(CircleShape).background(C.Accent).clickable { key("SELECT") },
+                        contentAlignment = Alignment.Center) { Text("OK", color = C.Bg, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    K("Back", "BACK", Modifier.weight(1f)); K("Presets", "PRESET", Modifier.weight(1f)); K("Source", "SOURCE", Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    K("⏮", "PREV", Modifier.weight(1f)); K("⏯", "PLAY", Modifier.weight(1f)); K("⏹", "STOP", Modifier.weight(1f)); K("⏭", "NEXT", Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    K("Vol −", "VOLDOWN", Modifier.weight(1f)); K("Mute", "MUTE", Modifier.weight(1f)); K("Vol +", "VOLUP", Modifier.weight(1f))
+                }
+            }
+        }
+        Text("Power is on the top bar. The first press of each key may take a moment while the app learns your stereo's key names.",
+            color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 14.dp))
     }
 }
