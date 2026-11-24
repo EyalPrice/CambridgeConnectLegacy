@@ -22,5 +22,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <provider
+            android:name=".ReportProvider"
+            android:authorities="io.github.eyalprice.ccl.report"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

@@ -30,6 +30,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import android.net.Uri;
+import android.content.pm.PackageInfo;
+import android.os.Build;
 
 public class MainActivity extends Activity {
 
@@ -60,7 +68,8 @@ public class MainActivity extends Activity {
         LinearLayout tabs = row();
         tabs.addView(weighted(button("Remote", v -> showRemote())));
         tabs.addView(weighted(button("Commands", v -> showCommands())));
-        tabs.addView(weighted(button("Find stereo", v -> showScan())));
+        tabs.addView(weighted(button("Check", v -> showCheck())));
+        tabs.addView(weighted(button("Find", v -> showScan())));
         root.addView(tabs);
 
         status = new TextView(this);
@@ -75,6 +84,12 @@ public class MainActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         setContentView(root);
+
+        updateBar = new Button(this);
+        updateBar.setAllCaps(false);
+        updateBar.setVisibility(View.GONE);
+        root.addView(updateBar, 1);
+        checkForUpdate();
 
         String loc = prefs.getString(PREF_LOCATION, null);
         if (loc != null) connect(loc);
@@ -96,6 +111,7 @@ public class MainActivity extends Activity {
                 Upnp.Device d = Upnp.loadDevice(location);
                 ui.post(() -> {
                     device = d;
+                    check = null;
                     prefs.edit().putString(PREF_LOCATION, location).apply();
                     setStatus("Connected: " + d.friendlyName + "  (" + d.host() + ")");
                     showRemote();
@@ -498,6 +514,164 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ small UI helpers
 
     private void setStatus(String s) { status.setText(s); }
+
+    // ------------------------------------------------------------------ app version & updates
+
+    private Button updateBar;
+
+    private long versionCode() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "?";
+        }
+    }
+
+    /** Asks GitHub for the latest release and offers it when it is newer than this build. */
+    private void checkForUpdate() {
+        bg.submit(() -> {
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL(
+                        "https://api.github.com/repos/EyalPrice/CambridgeConnectLegacy/releases/latest").openConnection();
+                c.setConnectTimeout(5000);
+                c.setReadTimeout(5000);
+                c.setRequestProperty("Accept", "application/vnd.github+json");
+                if (c.getResponseCode() != 200) return;
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                try (java.io.InputStream in = c.getInputStream()) {
+                    byte[] b = new byte[8192];
+                    int n;
+                    while ((n = in.read(b)) > 0) bos.write(b, 0, n);
+                }
+                JSONObject rel = new JSONObject(bos.toString("UTF-8"));
+                String tag = rel.optString("tag_name", "");
+                long remote = Long.parseLong(tag.substring(tag.lastIndexOf('.') + 1));
+                String url = rel.optString("html_url");
+                JSONArray assets = rel.optJSONArray("assets");
+                if (assets != null && assets.length() > 0) {
+                    url = assets.getJSONObject(0).optString("browser_download_url", url);
+                }
+                final String dl = url;
+                if (remote > versionCode()) {
+                    ui.post(() -> {
+                        updateBar.setText("New version " + tag + " available – tap to download");
+                        updateBar.setVisibility(View.VISIBLE);
+                        updateBar.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(dl))));
+                    });
+                }
+            } catch (Exception ignored) {
+                // offline or rate-limited: try again next start
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ stereo check screen
+
+    private StereoCheck check;
+    private TextView checkStatus;
+
+    private void showCheck() {
+        content.removeAllViews();
+        if (device == null) {
+            content.addView(note("No stereo connected yet. Tap “Find”."));
+            return;
+        }
+        if (check == null) check = new StereoCheck(device, "Cambridge Connect Legacy " + versionName());
+        content.addView(heading("Stereo check"));
+        content.addView(note("Tests what your stereo supports and builds a report. "
+                + "Your network addresses, MAC address and most of the serial number are removed from the report."));
+        checkStatus = new TextView(this);
+        checkStatus.setTextSize(14);
+        checkStatus.setPadding(0, dp(8), 0, dp(8));
+        checkStatus.setTextColor(Color.rgb(0x8A, 0x5A, 0x0C));
+        content.addView(checkStatus);
+
+        content.addView(heading("1 · Read test"));
+        content.addView(note("Runs every command that only reads information. Safe, takes about a minute."));
+        content.addView(button("Run read test", v -> runCheck(() -> check.runReadTest(this::checkProgress))));
+
+        content.addView(heading("2 · Source tour"));
+        content.addView(note("Switch the stereo to a source (radio, Spotify, TV…), start something playing, "
+                + "type its name below and tap Capture. Repeat for each source you use."));
+        EditText label = new EditText(this);
+        label.setHint("Source name, e.g. Spotify");
+        label.setSingleLine(true);
+        content.addView(label);
+        content.addView(button("Capture this source", v -> {
+            String name = label.getText().toString().trim();
+            if (name.isEmpty()) name = "Source " + (check.tourCount() + 1);
+            final String n = name;
+            label.setText("");
+            runCheck(() -> check.captureSource(n, this::checkProgress));
+        }));
+
+        content.addView(heading("3 · Safe change test (optional)"));
+        content.addView(note("Changes volume, mute, loudness, balance, bass, treble, digital filter and phase by one step, "
+                + "reads them back and puts them straight back. Never: power off, firmware update, deleting presets."));
+        content.addView(button("Run safe change test", v -> new AlertDialog.Builder(this)
+                .setTitle("Run the safe change test?")
+                .setMessage("Settings will change for a moment and then be restored. You may hear the volume or mute change briefly.")
+                .setPositiveButton("Run", (d, w) -> runCheck(() -> check.runChangeTest(this::checkProgress)))
+                .setNegativeButton("Cancel", null)
+                .show()));
+
+        content.addView(heading("Report"));
+        content.addView(button("Share report", v -> shareCheckReport()));
+        content.addView(note("Send it by email or chat, or attach it to a GitHub issue."));
+    }
+
+    private void checkProgress(String text) {
+        ui.post(() -> { if (checkStatus != null) checkStatus.setText(text); });
+    }
+
+    private boolean checkBusy;
+
+    private void runCheck(Runnable job) {
+        if (checkBusy) { setStatus("Please wait – a test is still running."); return; }
+        checkBusy = true;
+        bg.submit(() -> {
+            try {
+                job.run();
+            } catch (Exception e) {
+                checkProgress("Stopped: " + e);
+            } finally {
+                ui.post(() -> checkBusy = false);
+            }
+        });
+    }
+
+    private void shareCheckReport() {
+        if (check == null) return;
+        bg.submit(() -> {
+            try {
+                check.releaseNavigator();
+                String report = check.buildReport();
+                try (OutputStream os = new FileOutputStream(ReportProvider.file(this))) {
+                    os.write(report.getBytes(StandardCharsets.UTF_8));
+                }
+                ui.post(() -> {
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("text/plain");
+                    i.putExtra(Intent.EXTRA_SUBJECT, "Stereo check report – " + device.friendlyName);
+                    i.putExtra(Intent.EXTRA_TEXT, "Stereo check report from Cambridge Connect Legacy (attached).");
+                    i.putExtra(Intent.EXTRA_STREAM, ReportProvider.uri());
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(i, "Share report"));
+                });
+            } catch (Exception e) {
+                checkProgress("Could not create report: " + e.getMessage());
+            }
+        });
+    }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
