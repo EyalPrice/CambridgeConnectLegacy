@@ -29,6 +29,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -85,7 +87,22 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
                 AssistChip(onClick = {}, enabled = false, label = { Text(pb.format, fontSize = 12.sp) })
             }
         }
-        Panel(Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth()) {
+        // Swipe the card: right-to-left = next, left-to-right = previous (same as the buttons).
+        var dragX by remember { mutableFloatStateOf(0f) }
+        val view = androidx.compose.ui.platform.LocalView.current
+        Panel(Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth()
+            .graphicsLayer { translationX = dragX * 0.35f }
+            .pointerInput(Unit) {
+                val limit = 60.dp.toPx()
+                androidx.compose.foundation.gestures.detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (dragX <= -limit) { vm.transport("Next"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
+                        else if (dragX >= limit) { vm.transport("Previous"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
+                        dragX = 0f
+                    },
+                    onDragCancel = { dragX = 0f },
+                ) { change, amount -> change.consume(); dragX += amount }
+            }) {
             // Fixed height: long station names never push the controls down.
             Row(Modifier.padding(12.dp).height(108.dp), verticalAlignment = Alignment.CenterVertically) {
                 ArtBox(if (st.hasMetadata) pb.artUrl else "", if (st.isSpotify) 96.dp else 72.dp)
