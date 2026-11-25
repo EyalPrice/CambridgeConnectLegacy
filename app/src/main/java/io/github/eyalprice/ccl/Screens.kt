@@ -721,7 +721,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
 // ====================================================================== Pro
 
 @Composable
-fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplorer: () -> Unit, onRemote: () -> Unit) {
+fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplorer: () -> Unit, onRemote: () -> Unit, onStream: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Panel(Modifier.fillMaxWidth().clickable(onClick = onCheck), active = true) {
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -752,6 +752,17 @@ fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplo
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text("Virtual remote", color = C.Text, fontWeight = FontWeight.SemiBold)
                     Text("The same keys as the stereo's handset", color = C.Muted, fontSize = 12.sp)
+                }
+                Text("›", color = C.Muted)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Panel(Modifier.fillMaxWidth().clickable(onClick = onStream)) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Link, null, tint = C.Accent)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("Custom station test", color = C.Text, fontWeight = FontWeight.SemiBold)
+                    Text("Can this stereo play a radio URL you type in?", color = C.Muted, fontSize = 12.sp)
                 }
                 Text("›", color = C.Muted)
             }
@@ -1019,5 +1030,58 @@ fun RemoteScreen(vm: StereoViewModel) {
         }
         Text("Power is on the top bar. The first press of each key may take a moment while the app learns your stereo's key names.",
             color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 14.dp))
+    }
+}
+
+
+// ====================================================================== Custom station test (Pro)
+
+@Composable
+fun StreamTestScreen(vm: StereoViewModel) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val host = vm.stereoHost()
+    var probe by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("My station") }
+    var url by remember { mutableStateOf("http://") }
+    var result by remember { mutableStateOf("") }
+    val candidates = remember { vm.streamCandidates() }
+    LaunchedEffect(Unit) { probe = vm.streamProbe() }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+        Text("Step 1 · The stereo's own web page", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+        Text("Stereo address: ${host.ifBlank { "not connected" }}", color = C.Muted, fontSize = 13.sp)
+        if (host.isNotBlank()) GhostButton("Open http://$host/ in the browser",
+            { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://$host/"))) }, Modifier.fillMaxWidth().padding(top = 6.dp))
+
+        Text("Step 2 · What the stereo reports", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))
+        val p = probe
+        if (p == null) Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            BusySpinner(); Text("  Asking the stereo…", color = C.Muted, fontSize = 13.sp)
+        } else Panel(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+            Text(p, color = C.Text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(12.dp))
+        }
+
+        Text("Step 3 · Try a URL", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))
+        OutlinedTextField(name, { name = it }, label = { Text("Station name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(url, { url = it.trim() }, label = { Text("Stream URL") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri))
+        if (candidates.isEmpty()) Text("This stereo offers no command that takes a URL.", color = C.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        candidates.forEach { a ->
+            OutlinedButton(onClick = {
+                busy = true; result = ""
+                scope.launch { result = vm.tryStream(a, name.trim(), url); busy = false }
+            }, enabled = !busy && url.length > 10, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text("Try with $a", color = C.Accent) }
+        }
+        if (busy) Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            BusySpinner(); Text("  Trying… (about 5 seconds)", color = C.Muted, fontSize = 13.sp)
+        }
+        if (result.isNotBlank()) Panel(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+            Text(result, color = C.Text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(12.dp))
+        }
+        GhostButton("Share results with the developer", {
+            shareText(ctx, "Custom station test", StereoCheck.sanitize((probe ?: "") + "\n\n— Try —\n" + result, host))
+        }, Modifier.fillMaxWidth().padding(top = 16.dp))
+        Text("Shared results hide your network addresses.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 24.dp))
     }
 }

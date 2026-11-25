@@ -258,6 +258,68 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ------------------------------------------------------------ custom station test (Pro)
+
+    fun stereoHost(): String = device?.host().orEmpty()
+
+    /** Looks for the stereo's web page and any command that reports or accepts a stream URL. */
+    suspend fun streamProbe(): String = withContext(Dispatchers.IO) {
+        val d = device ?: return@withContext "Not connected to a stereo."
+        val host = d.host()
+        buildString {
+            append("Stereo address: $host\n")
+            append("\n— Built-in web page —\n")
+            append("http://$host/\n" + StreamTest.fetch("http://$host/") + "\n")
+            val rel = StreamTest.related(d)
+            append("\n— Commands about URLs, streams or stations (${rel.size}) —\n")
+            rel.forEach { (sv, a) ->
+                append("${a.name} (${sv.shortType()}) in: " + a.inArgs().joinToString { it.name }.ifBlank { "none" } + "\n")
+            }
+            append("\n— What the stereo reports for the current station —\n")
+            val auto = setOf("InstanceID", "Channel", "NavigatorId")
+            rel.filter { (_, a) -> a.name.startsWith("Get") && !StreamTest.isDangerous(a.name) && a.inArgs().all { it.name in auto } }
+                .forEach { (_, a) ->
+                    val r = callBlocking(a.name)
+                    append(a.name + ": " + (if (r?.ok() == true) r.out.entries.joinToString("; ") { "${it.key}=${it.value.take(300)}" } else "no answer") + "\n")
+                }
+            listOf("GetMediaInfo", "GetPositionInfo").filter { has(it) && rel.none { r -> r.second.name == it } }.forEach { a ->
+                val r = callBlocking(a)
+                append(a + ": " + (if (r?.ok() == true) r.out.entries.joinToString("; ") { "${it.key}=${it.value.take(300)}" } else "no answer") + "\n")
+            }
+            out("GetPlaybackDetails")?.let { append("GetPlaybackDetails: ${it.take(1200)}\n") }
+        }
+    }
+
+    fun streamCandidates(): List<String> = device?.let { d -> StreamTest.playCandidates(d).map { it.second.name } } ?: emptyList()
+
+    /** Tries to play [url] with the chosen command, then reports what the stereo says is playing. */
+    suspend fun tryStream(actionName: String, name: String, url: String): String = withContext(Dispatchers.IO) {
+        if (StreamTest.isDangerous(actionName)) return@withContext "Blocked for safety."
+        val d = device ?: return@withContext "Not connected to a stereo."
+        val (sv, a) = StreamTest.playCandidates(d).firstOrNull { it.second.name == actionName } ?: return@withContext "Command not found."
+        val args = a.inArgs().map { arg ->
+            val n = arg.name.lowercase()
+            arg.name to when {
+                n.contains("metadata") -> StreamTest.didl(name, url)
+                n.contains("url") || n.contains("uri") -> url
+                n.contains("name") || n.contains("title") -> name
+                else -> ""
+            }
+        }.filter { it.second.isNotEmpty() }.toTypedArray()
+        buildString {
+            val r = callBlocking(actionName, *args)
+            append("$actionName → " + (if (r == null) "no answer" else "HTTP ${r.httpCode}" + if (r.ok()) " OK" else ": " + r.body.take(300)) + "\n")
+            if (r?.ok() == true && actionName == "SetAVTransportURI") {
+                val p = callBlocking("Play", "Speed" to "1")
+                append("Play → " + (if (p?.ok() == true) "OK" else "HTTP ${p?.httpCode}") + "\n")
+            }
+            delay(5000)
+            append("After 5 s: transport=${out("GetTransportInfo") ?: "?"}\n")
+            out("GetPlaybackDetails")?.let { append("Playback: ${Reciva.playback(it).let { pb -> "${pb.state} · ${pb.title} · ${pb.format}" }}\n") }
+            refreshOnce()
+        }
+    }
+
     fun send(action: String, vararg args: Pair<String, String>, after: (() -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val r = callBlocking(action, *args)

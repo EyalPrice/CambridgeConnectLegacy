@@ -38,7 +38,7 @@ enum class Tab(val label: String, val title: String) {
     MUSIC("Music", "Music"), PRO("Pro", "Pro")
 }
 
-enum class Page(val title: String) { SOUND("Sound"), SETTINGS("Settings"), QUEUE("Queue"), CHECK("Stereo check"), EXPLORER("Commands"), REMOTE("Remote") }
+enum class Page(val title: String) { SOUND("Sound"), SETTINGS("Settings"), QUEUE("Queue"), CHECK("Stereo check"), EXPLORER("Commands"), REMOTE("Remote"), STREAM("Custom station test") }
 
 class MainActivity : ComponentActivity() {
 
@@ -170,12 +170,13 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
                     Page.CHECK -> CheckScreen(vm, version)
                     Page.EXPLORER -> ExplorerScreen(vm)
                     Page.REMOTE -> RemoteScreen(vm)
+                    Page.STREAM -> StreamTestScreen(vm)
                     null -> when (tab) {
                         Tab.PLAY -> NowPlayingScreen(st, vm, onInputs = { tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE })
                         Tab.INPUTS -> InputsScreen(st, vm) { }
                         Tab.RADIO -> RadioScreen(st, vm) { }
                         Tab.MUSIC -> MusicScreen(vm, onPlaying = { tab = Tab.PLAY }, onQueue = { page = Page.QUEUE })
-                        Tab.PRO -> ProScreen(st, vm, onCheck = { page = Page.CHECK }, onExplorer = { page = Page.EXPLORER }, onRemote = { page = Page.REMOTE })
+                        Tab.PRO -> ProScreen(st, vm, onCheck = { page = Page.CHECK }, onExplorer = { page = Page.EXPLORER }, onRemote = { page = Page.REMOTE }, onStream = { page = Page.STREAM })
                     }
                 }
             }
