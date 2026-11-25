@@ -1,5 +1,9 @@
 # Cambridge Connect Legacy
 
+**[⬇ Download the app (APK)](https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest/download/CambridgeConnectLegacy.apk)** · **[Website](https://eyalprice.github.io/CambridgeConnectLegacy/)**
+
+A free **Cambridge Connect alternative** for Android: a 64-bit replacement for the retired Cambridge Connect app.
+
 **Unofficial** Android Wi-Fi remote for legacy Cambridge Audio network streamers:
 **Minx Xi, NP30 and Stream Magic 6 (v1)**.
 

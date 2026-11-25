@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cambridge Connect Legacy – free Android remote for Minx Xi, NP30 &amp; Stream Magic 6</title>
+<meta name="description" content="A free, open-source Cambridge Connect alternative for Android. Control your Cambridge Audio Minx Xi, NP30 or Stream Magic 6 over Wi-Fi: volume, inputs, radio presets, Spotify, bass and treble. Works on new 64-bit phones. No ads, no tracking.">
+<link rel="canonical" href="https://eyalprice.github.io/CambridgeConnectLegacy/">
+<meta name="theme-color" content="#FBF7F1">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cambridge Connect Legacy – keep your Cambridge Audio stereo playing">
+<meta property="og:description" content="Free Android remote for Minx Xi, NP30 and Stream Magic 6. Works on new phones where Cambridge Connect no longer installs.">
+<meta property="og:url" content="https://eyalprice.github.io/CambridgeConnectLegacy/">
+<meta property="og:image" content="https://eyalprice.github.io/CambridgeConnectLegacy/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Cambridge Connect Legacy",
+  "operatingSystem": "Android 8.0 or newer",
+  "applicationCategory": "MultimediaApplication",
+  "description": "Unofficial, free Wi-Fi remote app for legacy Cambridge Audio network streamers (Minx Xi, NP30, Stream Magic 6). An alternative to the retired Cambridge Connect app.",
+  "downloadUrl": "https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest/download/CambridgeConnectLegacy.apk",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "EyalPrice", "url": "https://github.com/EyalPrice" }
+}
+</script>
+<style>
+  :root {
+    --paper: #FBF7F1; --paper2: #F4ECE1; --card: #FFFFFF; --ink: #1E1B18; --muted: #5F574E;
+    --line: #E6DCCD; --amber: #B45309; --amber-dk: #92400E; --amber-soft: #FCE9D2;
+    --night: #0B0C0F; --night2: #15171C; --glow: #E8A33D;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+  a { color: var(--amber-dk); }
+  a:hover { color: var(--amber); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; margin: 0; }
+  h2 { font-size: clamp(28px, 4vw, 38px); }
+  .eyebrow { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--amber-dk); font-weight: 600; }
+  .lead { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); }
+  section { padding: 72px 0; }
+  .skip { position: absolute; left: -999px; }
+  .skip:focus { left: 16px; top: 16px; background: var(--card); padding: 8px 12px; border-radius: 8px; z-index: 10; }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 26px; border-radius: 999px;
+         font-weight: 600; text-decoration: none; font-size: 17px; border: 1px solid transparent; transition: transform .15s, box-shadow .15s, background .15s; }
+  .btn:focus-visible { outline: 3px solid var(--glow); outline-offset: 3px; }
+  .btn-main { background: var(--amber); color: #fff; box-shadow: 0 10px 24px -10px rgba(180, 83, 9, .55); }
+  .btn-main:hover { background: var(--amber-dk); color: #fff; transform: translateY(-1px); }
+  .btn-ghost { background: var(--card); color: var(--ink); border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--amber); color: var(--ink); }
+  .btn svg { width: 20px; height: 20px; flex: none; }
+
+  /* nav */
+  header.top { padding: 18px 0; }
+  header.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-weight: 600; }
+  .brand svg { width: 34px; height: 34px; }
+  nav.links { display: flex; gap: 20px; flex-wrap: wrap; font-size: 15px; }
+  nav.links a { color: var(--muted); text-decoration: none; }
+  nav.links a:hover { color: var(--ink); }
+
+  /* hero */
+  .hero { position: relative; overflow: hidden; padding: 40px 0 190px; }
+  .waves { position: absolute; inset: auto 0 0 0; height: 200px; pointer-events: none; opacity: .9; }
+  .waves svg { position: absolute; bottom: 0; width: 200%; height: 100%; }
+  .w1 { animation: drift 26s linear infinite; }
+  .w2 { animation: drift 38s linear infinite reverse; }
+  .w3 { animation: drift 52s linear infinite; }
+  @keyframes drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .w1, .w2, .w3 { animation: none; } html { scroll-behavior: auto; } }
+  .hero .wrap { position: relative; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 48px; align-items: center; }
+  .hero h1 { font-size: clamp(38px, 6vw, 62px); margin: 14px 0 18px; }
+  .hero h1 em { font-style: italic; color: var(--amber-dk); }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 28px 0 14px; }
+  .fine { font-size: 14px; color: var(--muted); }
+  .stage { position: relative; height: 520px; }
+  @media (max-width: 860px) {
+    .hero .wrap { grid-template-columns: 1fr; }
+    .stage { height: 460px; }
+  }
+
+  /* phone */
+  .phone { position: absolute; width: 250px; height: 510px; border-radius: 38px; background: #111;
+           padding: 10px; box-shadow: 0 30px 60px -20px rgba(30, 27, 24, .45), 0 0 0 1px rgba(0,0,0,.4); }
+  .phone .screen { width: 100%; height: 100%; border-radius: 30px; background: var(--night); color: #ECEDEF; overflow: hidden;
+                   font: 12px/1.35 var(--sans); padding: 18px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .hero .phone { right: 0; top: 0; transform: rotate(4deg); z-index: 1; }
+  .scr-title { font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  .scr-sub { color: #9BA0AA; font-size: 11px; }
+  .chip { display: inline-block; padding: 5px 10px; border-radius: 99px; background: #1A1C22; border: 1px solid #2A2D35; font-size: 11px; }
+  .np { display: flex; gap: 10px; align-items: center; background: var(--night2); border: 1px solid #23262D; border-radius: 14px; padding: 9px; }
+  .art { width: 46px; height: 46px; border-radius: 9px; background: linear-gradient(135deg, #2b2f3a, #1a1c22); flex: none; display: grid; place-items: center; }
+  .np b { display: block; font-size: 13px; }
+  .knob { display: grid; place-items: center; margin: 6px 0; }
+  .tabs { margin-top: auto; display: flex; justify-content: space-around; border-top: 1px solid #1E2026; padding-top: 8px; color: #9BA0AA; font-size: 9.5px; }
+  .tabs .on { color: var(--glow); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 10px; }
+  .row.on { background: #1F1A12; }
+  .num { width: 24px; height: 24px; border-radius: 7px; background: #1A1C22; display: grid; place-items: center; font-weight: 600; font-size: 11px; }
+  .row.on .num { background: var(--glow); color: var(--night); }
+  .step { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #23262D; }
+  .step span.v { color: var(--glow); font-weight: 600; }
+  .pill { width: 26px; height: 26px; border-radius: 13px; border: 1px solid #2A2D35; display: inline-grid; place-items: center; }
+
+  /* stereo illustration */
+  .stereo { position: absolute; left: 0; bottom: -10px; width: 300px; z-index: 2; filter: drop-shadow(0 24px 30px rgba(30, 27, 24, .28)); }
+  @media (max-width: 860px) { .stereo { width: 210px; left: 0; bottom: -20px; } .hero .phone { right: 0; width: 220px; height: 450px; } .stage { height: 470px; } }
+
+  /* cards & grids */
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 34px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 24px; }
+  .card h3 { font-size: 21px; margin: 12px 0 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 16px; }
+  .ico { width: 44px; height: 44px; border-radius: 12px; background: var(--amber-soft); color: var(--amber-dk); display: grid; place-items: center; }
+  .ico svg { width: 24px; height: 24px; }
+  .models { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+  .model { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 10px 18px; font-weight: 600; }
+  .model small { color: var(--muted); font-weight: 400; }
+  .story { background: var(--paper2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .story blockquote { font-family: var(--serif); font-size: clamp(22px, 3vw, 30px); line-height: 1.35; margin: 0; max-width: 820px; }
+  .story cite { display: block; margin-top: 16px; font-style: normal; color: var(--muted); font-size: 16px; }
+
+  /* previews */
+  .previews { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; margin-top: 40px; }
+  .previews .phone { position: relative; width: 230px; height: 470px; }
+  .previews figure { margin: 0; text-align: center; }
+  .previews figcaption { margin-top: 14px; color: var(--muted); font-size: 15px; }
+
+  /* steps */
+  ol.install { counter-reset: s; list-style: none; padding: 0; margin: 34px 0 0; display: grid; gap: 14px; }
+  ol.install li { counter-increment: s; display: flex; gap: 16px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+  ol.install li::before { content: counter(s); flex: none; width: 34px; height: 34px; border-radius: 17px; background: var(--amber); color: #fff; font-weight: 700; display: grid; place-items: center; }
+
+  /* faq */
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 0 20px; margin-top: 12px; }
+  summary { cursor: pointer; font-weight: 600; padding: 18px 0; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--amber-dk); font-size: 22px; line-height: 1; }
+  details[open] summary::after { content: "–"; }
+  details p { margin: 0 0 18px; color: var(--muted); }
+
+  /* community & coffee */
+  .community { text-align: center; }
+  .community .cta { justify-content: center; }
+  .coffee { background: var(--card); border: 1px solid var(--line); border-radius: 28px; padding: 40px 28px; text-align: center; max-width: 760px; margin: 0 auto; }
+  .coffee p { color: var(--muted); margin: 14px auto 24px; max-width: 600px; }
+  footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  footer .wrap { display: grid; gap: 8px; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="4" width="40" height="40" rx="8" fill="#1F2A44"/><circle cx="24" cy="24" r="10" fill="#fff"/><circle cx="24" cy="24" r="4" fill="#1F2A44"/></svg>
+      Cambridge Connect Legacy
+    </a>
+    <nav class="links" aria-label="Page sections">
+      <a href="#features">Features</a><a href="#install">Install</a><a href="#faq">FAQ</a><a href="#community">Feedback</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="waves" aria-hidden="true">
+      <svg class="w1" viewBox="0 0 2400 260" preserveAspectRatio="none"><path d="M0 170 C 200 120, 400 220, 600 170 S 1000 120, 1200 170 S 1600 220, 1800 170 S 2200 120, 2400 170 V260 H0Z" fill="#F4E3CC" opacity=".55"/></svg>
+      <svg class="w2" viewBox="0 0 2400 260" preserveAspectRatio="none"><path d="M0 200 C 150 160, 450 240, 600 200 S 1050 160, 1200 200 S 1650 240, 1800 200 S 2250 160, 2400 200 V260 H0Z" fill="#EFD2AE" opacity=".45"/></svg>
+      <svg class="w3" viewBox="0 0 2400 260" preserveAspectRatio="none"><path d="M0 120 C 300 90, 300 160, 600 120 S 900 90, 1200 120 S 1500 160, 1800 120 S 2100 90, 2400 120" fill="none" stroke="#D08B3E" stroke-width="2" opacity=".5"/><path d="M0 140 C 300 110, 300 180, 600 140 S 900 110, 1200 140 S 1500 180, 1800 140 S 2100 110, 2400 140" fill="none" stroke="#D08B3E" stroke-width="1.2" opacity=".35"/></svg>
+    </div>
+    <div class="wrap">
+      <div>
+        <div class="eyebrow">A free Cambridge Connect alternative</div>
+        <h1>Keep your stereo <em>playing.</em></h1>
+        <p class="lead">A free Android remote for legacy Cambridge Audio streamers: Minx Xi, NP30 and Stream Magic 6. It works on new 64-bit phones, where the retired Cambridge Connect app can no longer be installed.</p>
+        <div class="cta">
+          <a class="btn btn-main" href="https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest/download/CambridgeConnectLegacy.apk">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+            Download for Android
+          </a>
+          <a class="btn btn-ghost" href="#install">How to install</a>
+        </div>
+        <p class="fine">Free · open source · no ads · no tracking · Android 8 or newer<br>Unofficial: not made by or affiliated with Cambridge Audio.</p>
+      </div>
+      <div class="stage" aria-hidden="true">
+        <!-- A generic, stylised compact hi-fi (not a product photo) -->
+        <svg class="stereo" viewBox="0 0 330 170">
+          <rect x="6" y="8" width="318" height="150" rx="16" fill="#2A2C31"/>
+          <rect x="6" y="8" width="318" height="20" rx="10" fill="#34373D"/>
+          <rect x="28" y="46" width="150" height="46" rx="6" fill="#0E1013"/>
+          <text x="40" y="66" fill="#E8A33D" font-family="system-ui, sans-serif" font-size="12" font-weight="600">Internet radio</text>
+          <text x="40" y="83" fill="#9BA0AA" font-family="system-ui, sans-serif" font-size="10">Classic FM · 128 kbps</text>
+          <circle cx="262" cy="84" r="40" fill="#1B1D21" stroke="#4A4E57" stroke-width="2"/>
+          <circle cx="262" cy="84" r="30" fill="#25282E"/>
+          <circle cx="262" cy="60" r="4" fill="#E8A33D"/>
+          <circle cx="40" cy="128" r="5" fill="#4CC38A"/>
+          <rect x="60" y="122" width="34" height="12" rx="6" fill="#3A3E46"/>
+          <rect x="100" y="122" width="34" height="12" rx="6" fill="#3A3E46"/>
+          <rect x="140" y="122" width="34" height="12" rx="6" fill="#3A3E46"/>
+          <rect x="24" y="158" width="40" height="8" rx="3" fill="#1A1B1E"/>
+          <rect x="266" y="158" width="40" height="8" rx="3" fill="#1A1B1E"/>
+        </svg>
+        <div class="phone">
+          <div class="screen">
+            <div><div class="scr-title">Now Playing</div><div class="scr-sub">● Minx Xi · Vol 18</div></div>
+            <span class="chip">Internet radio ▾</span>
+            <div class="np"><div class="art"><svg width="20" height="20" viewBox="0 0 48 48"><circle cx="24" cy="24" r="10" fill="#3A3E48"/><circle cx="24" cy="24" r="4" fill="#15171C"/></svg></div><div><span class="scr-sub" style="color:#E8A33D;letter-spacing:.1em">PRESET 2</span><b>Classic FM</b><span class="scr-sub">AAC · 128 kbps</span></div></div>
+            <div class="knob">
+              <svg width="160" height="160" viewBox="0 0 160 160">
+                <circle cx="80" cy="80" r="70" fill="none" stroke="#1E2026" stroke-width="7" stroke-linecap="round" stroke-dasharray="330 440" transform="rotate(135 80 80)"/>
+                <circle cx="80" cy="80" r="70" fill="none" stroke="#E8A33D" stroke-width="7" stroke-linecap="round" stroke-dasharray="149 440" transform="rotate(135 80 80)"/>
+                <circle cx="80" cy="80" r="52" fill="#1A1C22" stroke="#2A2D35" stroke-width="2"/>
+                <circle cx="44" cy="80" r="4.5" fill="#E8A33D" transform="rotate(66 80 80)"/>
+                <text x="80" y="88" text-anchor="middle" fill="#ECEDEF" font-size="28" font-weight="600" font-family="system-ui, sans-serif">18</text>
+                <text x="80" y="104" text-anchor="middle" fill="#9BA0AA" font-size="8" letter-spacing="1.5" font-family="system-ui, sans-serif">VOLUME</text>
+              </svg>
+            </div>
+            <div class="tabs"><span class="on">Playing</span><span>Inputs</span><span>Radio</span><span>Music</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="story">
+    <div class="wrap">
+      <blockquote>“I love my Minx Xi. When its app stopped working on my new phone, I built my own so it could keep playing. Now yours can too.”
+        <cite>– Eyal, Minx Xi owner and the person behind this app</cite></blockquote>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="eyebrow">What it does</div>
+      <h2>Everything you used Cambridge Connect for, and a little more.</h2>
+      <div class="models" aria-label="Supported stereos">
+        <span class="model">Minx Xi</span><span class="model">NP30</span><span class="model">Stream Magic 6 <small>(v1)</small></span>
+        <span class="model"><small>Other legacy Stream Magic units may work too</small></span>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v3"/></svg></div>
+          <h3>A real volume knob</h3><p>Turn it with your thumb. Your phone's side volume buttons work too, even when the screen is locked.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+          <h3>Every input, one tap</h3><p>Internet radio, Spotify, TV, Bluetooth and the rest, using your stereo's own input names.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg></div>
+          <h3>Radio presets &amp; search</h3><p>All your preset stations. Search by name, country or genre, and save a find to any preset slot.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></div>
+          <h3>Sound the way you like it</h3><p>Bass, treble, balance, mute and phase, with one tap to reset.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg></div>
+          <h3>Lock screen &amp; widget</h3><p>Play, pause and see what's on from the lock screen, or add the home-screen widget.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg></div>
+          <h3>Private by design</h3><p>It talks only to your stereo on your home Wi-Fi. No accounts, no ads, no tracking. The code is open for anyone to check.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top: 20px">
+    <div class="wrap" style="text-align:center">
+      <div class="eyebrow">A look inside</div>
+      <h2>Dark, calm and easy to use.</h2>
+      <div class="previews">
+        <figure>
+          <div class="phone"><div class="screen">
+            <div><div class="scr-title">Radio</div><div class="scr-sub">● Minx Xi · Vol 18</div></div>
+            <div style="display:flex;gap:4px;background:#15171C;border:1px solid #23262D;border-radius:10px;padding:3px"><span style="flex:1;text-align:center;background:#E8A33D;color:#0B0C0F;border-radius:7px;padding:5px;font-weight:600">Presets</span><span style="flex:1;text-align:center;padding:5px">Search</span></div>
+            <div class="row"><span class="num">1</span><span>Jazz FM</span></div>
+            <div class="row on"><span class="num">2</span><span>Classic FM<br><span class="scr-sub">Playing now</span></span></div>
+            <div class="row"><span class="num">3</span><span>BBC Radio 3</span></div>
+            <div class="row"><span class="num">4</span><span>Radio Swiss Jazz</span></div>
+            <div class="row"><span class="num">5</span><span class="scr-sub">Empty</span></div>
+            <div class="tabs"><span>Playing</span><span>Inputs</span><span class="on">Radio</span><span>Music</span></div>
+          </div></div>
+          <figcaption>Radio presets</figcaption>
+        </figure>
+        <figure>
+          <div class="phone"><div class="screen">
+            <div><div class="scr-title">Inputs</div><div class="scr-sub">● Minx Xi · Vol 18</div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="height:76px;border-radius:12px;background:#1F1A12;border:1.5px solid #E8A33D;padding:9px;display:flex;flex-direction:column;justify-content:flex-end"><b>Internet radio</b><span class="scr-sub">Active</span></div>
+              <div style="height:76px;border-radius:12px;background:#15171C;border:1px solid #23262D;padding:9px;display:flex;flex-direction:column;justify-content:flex-end"><b>Spotify</b></div>
+              <div style="height:76px;border-radius:12px;background:#15171C;border:1px solid #23262D;padding:9px;display:flex;flex-direction:column;justify-content:flex-end"><b>TV</b></div>
+              <div style="height:76px;border-radius:12px;background:#15171C;border:1px solid #23262D;padding:9px;display:flex;flex-direction:column;justify-content:flex-end"><b>Bluetooth</b></div>
+            </div>
+            <div class="tabs"><span>Playing</span><span class="on">Inputs</span><span>Radio</span><span>Music</span></div>
+          </div></div>
+          <figcaption>Inputs</figcaption>
+        </figure>
+        <figure>
+          <div class="phone"><div class="screen">
+            <div><div class="scr-title">Sound</div><div class="scr-sub">● Minx Xi · Vol 18</div></div>
+            <div class="step"><span>Volume</span><span><span class="pill">−</span> <span class="v">18</span> <span class="pill">+</span></span></div>
+            <div class="step"><span>Bass</span><span><span class="pill">−</span> <span class="v">+1</span> <span class="pill">+</span></span></div>
+            <div class="step"><span>Treble</span><span><span class="pill">−</span> <span class="v">0</span> <span class="pill">+</span></span></div>
+            <div class="step"><span>Balance</span><span><span class="pill">L</span> <span class="v">Centre</span> <span class="pill">R</span></span></div>
+            <div class="step"><span>Invert phase</span><span class="scr-sub">Off</span></div>
+            <div class="tabs"><span>Playing</span><span>Inputs</span><span>Radio</span><span>Music</span></div>
+          </div></div>
+          <figcaption>Sound</figcaption>
+        </figure>
+      </div>
+      <p class="fine" style="margin-top:18px">Design previews. Station names are examples.</p>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <div class="eyebrow">Install</div>
+      <h2>Up and running in a minute.</h2>
+      <ol class="install">
+        <li><div><b>Download the app on your Android phone.</b><br><a href="https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest/download/CambridgeConnectLegacy.apk">Tap here to download</a>. It's a small file (about 2 MB).</div></li>
+        <li><div><b>Open the downloaded file.</b><br>If Android asks, allow your browser to “install unknown apps”. This is normal for apps that come from outside Google Play.</div></li>
+        <li><div><b>Make sure your phone and stereo are on the same Wi-Fi.</b><br>Switch the stereo on. The app finds it by itself.</div></li>
+        <li><div><b>Enjoy the music.</b><br>The app tells you when a new version is ready, and updates install over the old one.</div></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="faq" style="padding-top: 20px">
+    <div class="wrap">
+      <div class="eyebrow">Questions</div>
+      <h2>Good to know</h2>
+      <details><summary>Which stereos does it work with?</summary>
+        <p>It's made for legacy Cambridge Audio streamers that used the Cambridge Connect app: the Minx Xi, NP30 and Stream Magic 6 (v1). It's tested on a Minx Xi. Other models from the same family may work too. If yours doesn't, please report it so it can be added.</p></details>
+      <details><summary>Why did Cambridge Connect stop working?</summary>
+        <p>Cambridge Connect was built as a 32-bit app and is no longer maintained, so it can't be installed on many newer 64-bit-only phones. Cambridge Audio's newer StreamMagic app doesn't support these older models. This app fills that gap.</p></details>
+      <details><summary>Is it safe?</summary>
+        <p>Yes. The app talks only to your stereo on your own home network. It has no accounts, ads or tracking, and it never sends your data anywhere. Its full source code is public, so anyone can check exactly what it does.</p></details>
+      <details><summary>Why isn't it on Google Play?</summary>
+        <p>It's a free hobby project, and for now it's published directly on GitHub. Android shows a one-time “install unknown apps” prompt for apps from outside Google Play. That's expected.</p></details>
+      <details><summary>Does it work with Spotify and Bluetooth?</summary>
+        <p>Yes. Spotify keeps working through the Spotify app as usual, and this app shows the track, album art and progress, and lets you pause or skip. Bluetooth audio plays as normal, and you control the stereo itself over Wi-Fi.</p></details>
+      <details><summary>Is this an official Cambridge Audio app?</summary>
+        <p>No. It's an independent, unofficial community project, not made by, endorsed by or affiliated with Cambridge Audio. Cambridge Audio, Minx, Stream Magic and Cambridge Connect are trademarks of their owner, used here only to describe compatibility.</p></details>
+    </div>
+  </section>
+
+  <section id="community" class="community">
+    <div class="wrap">
+      <div class="eyebrow">Get in touch</div>
+      <h2>Found a bug? Have an idea?</h2>
+      <p class="lead" style="max-width:680px;margin:14px auto 0">Reports and ideas go on GitHub, where everyone can see them and follow progress. You'll need a free GitHub account.</p>
+      <div class="cta">
+        <a class="btn btn-ghost" href="https://github.com/EyalPrice/CambridgeConnectLegacy/issues/new?labels=bug&amp;title=Bug%3A%20&amp;body=**Stereo%20model%3A**%20%0A**Phone%3A**%20%0A**What%20happened%3A**%20%0A**What%20you%20expected%3A**%20">Report a bug</a>
+        <a class="btn btn-ghost" href="https://github.com/EyalPrice/CambridgeConnectLegacy/issues/new?labels=enhancement&amp;title=Idea%3A%20&amp;body=**Your%20idea%3A**%20%0A**Stereo%20model%3A**%20">Request a feature</a>
+        <a class="btn btn-ghost" href="https://github.com/EyalPrice/CambridgeConnectLegacy/discussions">Say thanks</a>
+        <a class="btn btn-ghost" href="https://github.com/EyalPrice/CambridgeConnectLegacy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>
+          Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top: 10px">
+    <div class="wrap">
+      <div class="coffee">
+        <h2>Enjoying the music?</h2>
+        <p>Cambridge Connect Legacy is a hobby project, made for fun and out of a love of good sound, so that great stereos keep working long after their official apps stop. It's free, with no ads and no tracking. If it's made your listening a bit better and you'd like to say thanks, a small donation would mean a lot. Enjoy the music!</p>
+        <a class="btn btn-main" href="https://www.buymeacoffee.com/EyalPrice">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM17 9h1.5a2.5 2.5 0 0 1 0 5H17M7 2v3M11 2v3"/></svg>
+          Buy me a coffee</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>Cambridge Connect Legacy · free and open source under the <a href="https://github.com/EyalPrice/CambridgeConnectLegacy/blob/main/LICENSE">MIT licence</a> · <a href="https://github.com/EyalPrice/CambridgeConnectLegacy">source code</a></div>
+    <div>Unofficial community project. Not made by, endorsed by or affiliated with Cambridge Audio. Cambridge Audio, Minx, Stream Magic and Cambridge Connect are trademarks of their owner.</div>
+    <div>Privacy: this website uses no cookies, analytics or tracking. The app talks only to your stereo on your home network.</div>
+  </div>
+</footer>
+</body>
+</html>
