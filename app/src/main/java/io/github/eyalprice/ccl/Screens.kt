@@ -30,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -94,7 +95,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
             .graphicsLayer { translationX = dragX * 0.35f }
             .pointerInput(Unit) {
                 val limit = 60.dp.toPx()
-                androidx.compose.foundation.gestures.detectHorizontalDragGestures(
+                detectHorizontalDragGestures(
                     onDragEnd = {
                         if (dragX <= -limit) { vm.transport("Next"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
                         else if (dragX >= limit) { vm.transport("Previous"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
