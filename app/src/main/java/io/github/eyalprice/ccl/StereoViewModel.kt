@@ -62,6 +62,9 @@ data class StereoState(
 }
 
 /** Holds the connection to one stereo and keeps its state fresh by polling. */
+private const val BALANCE_UNIT = 16
+private const val BALANCE_STEPS = 16
+
 class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = app.getSharedPreferences("ccl", Context.MODE_PRIVATE)
@@ -240,7 +243,12 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 bass = out("GetToneCtrlBass")?.toIntOrNull(),
                 treble = out("GetToneCtrlTreble")?.toIntOrNull(),
-                balance = out("GetBalanceDB")?.toIntOrNull(),
+                balance = out("GetBalanceDB")?.toIntOrNull()?.let { raw ->
+                    // Stereo reports 1/256 dB units; show it as steps, preferring the app's own value when they agree.
+                    val saved = prefs.getInt("balance", 0)
+                    val fromStereo = Math.round(raw.toFloat() / BALANCE_UNIT).coerceIn(-BALANCE_STEPS, BALANCE_STEPS)
+                    if (Math.abs(saved * BALANCE_UNIT - raw) < 256) saved else fromStereo
+                },
                 phaseInverted = out("GetAudioPhaseInverted")?.let { v -> v == "1" || v.equals("true", true) },
                 filter = out("GetAudioFilter"),
             )
@@ -351,19 +359,28 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         send(action, arg to value.toString()) { loadSound() }
     }
 
-    /** Balance units differ between firmware versions: try a step of 1, then 1/256 dB units. */
+    /**
+     * Balance is sent in 1/256 dB units. One step is 16 units (1/16 dB) and it stops at 16 steps
+     * either side, so it moves gradually. The stereo rounds what it reports back, so the app keeps
+     * its own value instead of reading it back after each press.
+     */
     fun balanceStep(dir: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val cur = out("GetBalanceDB")?.toIntOrNull() ?: 0
-            callBlocking("SetBalanceDB", "DesiredBalanceDB" to (cur + dir).toString())
-            var now = out("GetBalanceDB")?.toIntOrNull() ?: cur
-            if (now == cur) {
-                callBlocking("SetBalanceDB", "DesiredBalanceDB" to (cur + dir * 256).toString())
-                now = out("GetBalanceDB")?.toIntOrNull() ?: cur
-                if (now == cur) toast("Balance isn't adjustable on this stereo.")
-            }
-            _state.update { it.copy(balance = now) }
-        }
+        val cur = _state.value.balance ?: 0
+        val next = (cur + dir).coerceIn(-BALANCE_STEPS, BALANCE_STEPS)
+        if (next == cur) return
+        setBalance(next)
+    }
+
+    fun setBalance(steps: Int) {
+        _state.update { it.copy(balance = steps) }
+        prefs.edit().putInt("balance", steps).apply()
+        send("SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString())
+    }
+
+    fun resetTone() {
+        setTone("bass", 0)
+        setTone("treble", 0)
+        if (_state.value.balance != null) setBalance(0)
     }
 
     fun setPhase(on: Boolean) {

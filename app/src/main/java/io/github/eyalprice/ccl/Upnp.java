@@ -127,43 +127,85 @@ public final class Upnp {
             lock.setReferenceCounted(false);
             lock.acquire();
         }
-        Map<String, Found> out = new LinkedHashMap<>();
-        try (DatagramSocket sock = new DatagramSocket()) {
-            sock.setSoTimeout(400);
-            InetAddress target = InetAddress.getByName(unicastIp == null ? "239.255.255.250" : unicastIp);
-            String[] searchTargets = {"ssdp:all", "upnp:rootdevice", "urn:schemas-upnp-org:device:MediaRenderer:1"};
-            for (int round = 0; round < 2; round++) {
-                for (String st : searchTargets) {
-                    String msg = "M-SEARCH * HTTP/1.1\r\n"
-                            + "HOST: 239.255.255.250:1900\r\n"
-                            + "MAN: \"ssdp:discover\"\r\n"
-                            + "MX: 2\r\n"
-                            + "ST: " + st + "\r\n\r\n";
-                    byte[] b = msg.getBytes(StandardCharsets.US_ASCII);
-                    sock.send(new DatagramPacket(b, b.length, target, 1900));
-                }
+        final Map<String, Found> out = java.util.Collections.synchronizedMap(new LinkedHashMap<>());
+        // Also listen for devices announcing themselves (NOTIFY); some TVs only answer this way.
+        Thread listener = null;
+        java.net.MulticastSocket ms = null;
+        if (unicastIp == null) {
+            try {
+                ms = new java.net.MulticastSocket(null);
+                ms.setReuseAddress(true);
+                ms.bind(new java.net.InetSocketAddress(1900));
+                ms.joinGroup(InetAddress.getByName("239.255.255.250"));
+                ms.setSoTimeout(400);
+                final java.net.MulticastSocket fms = ms;
+                final long stop = System.currentTimeMillis() + timeoutMs;
+                listener = new Thread(() -> {
+                    byte[] lb = new byte[8192];
+                    while (System.currentTimeMillis() < stop) {
+                        DatagramPacket p = new DatagramPacket(lb, lb.length);
+                        try { fms.receive(p); } catch (Exception e) { continue; }
+                        collect(out, new String(p.getData(), 0, p.getLength(), StandardCharsets.UTF_8));
+                    }
+                });
+                listener.start();
+            } catch (Exception e) {
+                ms = null; // port busy or not allowed: searching still works
             }
-            long end = System.currentTimeMillis() + timeoutMs;
+        }
+        try (DatagramSocket sock = new DatagramSocket()) {
+            sock.setSoTimeout(300);
+            InetAddress target = InetAddress.getByName(unicastIp == null ? "239.255.255.250" : unicastIp);
+            String[] searchTargets = {"ssdp:all", "upnp:rootdevice", "urn:schemas-upnp-org:device:MediaRenderer:1",
+                    "urn:schemas-upnp-org:device:MediaServer:1", "urn:dial-multiscreen-org:service:dial:1"};
+            long start = System.currentTimeMillis();
+            long end = start + timeoutMs;
+            long[] sendAt = {0, 1000, 2500};
+            int sent = 0;
             byte[] buf = new byte[8192];
             while (System.currentTimeMillis() < end) {
+                // Repeat the search a few times: UDP replies get lost on busy Wi-Fi.
+                if (sent < sendAt.length && System.currentTimeMillis() - start >= sendAt[sent]) {
+                    for (String st : searchTargets) {
+                        String msg = "M-SEARCH * HTTP/1.1\r\n"
+                                + "HOST: 239.255.255.250:1900\r\n"
+                                + "MAN: \"ssdp:discover\"\r\n"
+                                + "MX: 2\r\n"
+                                + "ST: " + st + "\r\n\r\n";
+                        byte[] b = msg.getBytes(StandardCharsets.US_ASCII);
+                        try { sock.send(new DatagramPacket(b, b.length, target, 1900)); } catch (IOException ignored) { }
+                    }
+                    sent++;
+                }
                 DatagramPacket p = new DatagramPacket(buf, buf.length);
                 try {
                     sock.receive(p);
                 } catch (SocketTimeoutException e) {
                     continue;
                 }
-                Map<String, String> h = parseHeaders(new String(p.getData(), 0, p.getLength(), StandardCharsets.UTF_8));
-                String loc = h.get("location");
-                if (loc == null || loc.isEmpty() || out.containsKey(loc)) continue;
-                Found f = new Found();
-                f.location = loc;
-                f.server = h.containsKey("server") ? h.get("server") : "";
-                out.put(loc, f);
+                collect(out, new String(p.getData(), 0, p.getLength(), StandardCharsets.UTF_8));
             }
         } finally {
+            if (listener != null) { try { listener.join(1000); } catch (InterruptedException ignored) { } }
+            if (ms != null) ms.close();
             if (lock != null) lock.release();
         }
-        return new ArrayList<>(out.values());
+        synchronized (out) {
+            return new ArrayList<>(out.values());
+        }
+    }
+
+    private static void collect(Map<String, Found> out, String packet) {
+        Map<String, String> h = parseHeaders(packet);
+        String loc = h.get("location");
+        if (loc == null || loc.isEmpty()) return;
+        synchronized (out) {
+            if (out.containsKey(loc)) return;
+            Found f = new Found();
+            f.location = loc;
+            f.server = h.containsKey("server") ? h.get("server") : "";
+            out.put(loc, f);
+        }
     }
 
     private static Map<String, String> parseHeaders(String resp) {

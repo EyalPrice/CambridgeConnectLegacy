@@ -438,6 +438,7 @@ fun SoundScreen(st: StereoState, vm: StereoViewModel) {
                 st.bass?.let { b -> Stepper("Bass", signed(b), { vm.setTone("bass", b - 1) }, { vm.setTone("bass", b + 1) }) }
                 st.treble?.let { t -> Stepper("Treble", signed(t), { vm.setTone("treble", t - 1) }, { vm.setTone("treble", t + 1) }) }
                 st.balance?.let { b -> Stepper("Balance", if (b == 0) "Centre" else if (b < 0) "L ${-b}" else "R $b", { vm.balanceStep(-1) }, { vm.balanceStep(1) }) }
+                if (st.balance != null) Text("Balance moves in small steps, up to 16 either side.", color = C.Muted, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -453,9 +454,7 @@ fun SoundScreen(st: StereoState, vm: StereoViewModel) {
                     modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp))
             }
         }
-        GhostButton("Reset bass & treble", {
-            vm.setTone("bass", 0); vm.setTone("treble", 0)
-        }, Modifier.fillMaxWidth().padding(top = 16.dp))
+        GhostButton("Reset bass, treble & balance", { vm.resetTone() }, Modifier.fillMaxWidth().padding(top = 16.dp))
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -582,6 +581,7 @@ fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplo
         }
         SectionLabel("Network devices")
         GhostButton("Search the network", { vm.search() }, Modifier.fillMaxWidth())
+        if (st.searchInfo.isNotBlank()) Text(st.searchInfo, color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         st.found.forEach { f ->
             Text("${f.name.ifBlank { "(no name)" }} · ${f.model}" + if (f.cambridge) "  ★ Cambridge" else "",
                 color = if (f.cambridge) C.Accent else C.Text, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
