@@ -449,7 +449,30 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deletePreset(n: Int) = send("DeletePreset", "PresetNumber" to n.toString()) { loadPresets() }
 
-    fun transport(action: String) = send(action)
+    /** Last preset started via next/back, so repeated presses keep stepping even before the title updates. */
+    @Volatile private var lastStepPreset = 0
+
+    fun transport(action: String) {
+        val st = _state.value
+        if (st.isRadio && (action == "Next" || action == "Previous")) { stepPreset(if (action == "Next") 1 else -1); return }
+        send(action)
+    }
+
+    /** Internet radio has no next/back, so step through the saved presets, skipping empty slots and wrapping around. */
+    private fun stepPreset(dir: Int) {
+        val st = _state.value
+        val saved = st.presets.filter { it.title.isNotBlank() }.map { it.number }.sorted()
+        if (saved.isEmpty()) return
+        val byTitle = st.presets.firstOrNull { it.title.isNotBlank() && it.title == st.playback.title }?.number
+        val cur = byTitle ?: lastStepPreset.takeIf { it in saved }
+        val next = if (cur == null) { if (dir > 0) saved.first() else saved.last() }
+            else { val i = saved.indexOf(cur); saved[(i + dir + saved.size) % saved.size] }
+        lastStepPreset = next
+        val title = st.presets.first { it.number == next }.title
+        playHoldUntil = System.currentTimeMillis() + 4000
+        _state.update { it.copy(transport = "PLAYING", playback = it.playback.copy(title = title, state = "Playing")) }
+        playPreset(next)
+    }
 
     fun play() = send("Play", "Speed" to "1")
 

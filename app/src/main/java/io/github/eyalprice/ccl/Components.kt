@@ -353,3 +353,13 @@ fun PlayButton(playing: Boolean, pending: Boolean, size: Dp, onClick: () -> Unit
             onClick, filled = true, size = size)
     }
 }
+
+
+/** Search box for long lists: filters as you type, with a clear button. */
+@Composable
+fun SearchField(value: String, onChange: (String) -> Unit, hint: String = "Search", modifier: Modifier = Modifier) {
+    OutlinedTextField(value, onChange, placeholder = { Text(hint) }, singleLine = true,
+        leadingIcon = { Icon(Icons.Filled.Search, null) },
+        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Filled.Close, "Clear search") } },
+        modifier = modifier.fillMaxWidth())
+}

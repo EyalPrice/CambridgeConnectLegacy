@@ -300,8 +300,11 @@ private fun StationSearch(st: StereoState, vm: StereoViewModel, onPlaying: () ->
                 Text("Share debug log with the developer", color = C.Accent)
             }
         }
+        var resultFilter by remember(r) { mutableStateOf("") }
+        if (r != null && !busy && r.stations.size > 8)
+            SearchField(resultFilter, { resultFilter = it }, "Search these ${r.stations.size} stations", Modifier.padding(top = 8.dp))
         if (r != null && !busy && r.stations.isNotEmpty()) LazyColumn(Modifier.padding(top = 8.dp)) {
-            items(r.stations) { s ->
+            items(r.stations.filter { resultFilter.isBlank() || it.name.contains(resultFilter, true) || it.detail.contains(resultFilter, true) }) { s ->
                 Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircleIconButton(Icons.Filled.PlayArrow, "Play ${s.name}", { vm.playStation(s.id); onPlaying() }, size = 40.dp)
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
@@ -320,7 +323,7 @@ private fun StationSearch(st: StereoState, vm: StereoViewModel, onPlaying: () ->
         AlertDialog(onDismissRequest = { picker = null }, title = { Text(if (kind == "country") "Country" else "Genre") },
             text = {
                 Column {
-                    OutlinedTextField(filter, { filter = it }, label = { Text("Filter") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    SearchField(filter, { filter = it }, if (kind == "country") "Type a country" else "Type a genre")
                     val l = list
                     if (l == null) Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(18.dp), color = C.Accent, strokeWidth = 2.dp)
@@ -418,8 +421,11 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
                 TextButton(onClick = { shareText(ctx, "Cambridge Connect Legacy debug log", vm.debugLog()) }) { Text("Share debug log", color = C.Accent) }
             }
         }
+        var menuFilter by remember(menu) { mutableStateOf("") }
+        val shown = (menu?.items ?: emptyList()).filterNot { isDangerous(it) }
+        if (shown.size > 8) SearchField(menuFilter, { menuFilter = it }, "Search this list", Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
-            items((menu?.items ?: emptyList()).filterNot { isDangerous(it) }) { item ->
+            items(shown.filter { menuFilter.isBlank() || it.name.contains(menuFilter, true) }) { item ->
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = !busy) {
                         busy = true
@@ -639,11 +645,15 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
     }
     if (langDialog) AlertDialog(onDismissRequest = { langDialog = false }, title = { Text("Stereo display language") },
         text = {
+            var langFilter by remember { mutableStateOf("") }
+            Column {
+            SearchField(langFilter, { langFilter = it }, "Type a language")
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                items(st.languages.sortedBy { it.first.lowercase() }) { (name, code) ->
+                items(st.languages.sortedBy { it.first.lowercase() }.filter { langFilter.isBlank() || it.first.contains(langFilter, true) }) { (name, code) ->
                     Text(name, color = if (name == st.language) C.Accent else C.Text,
                         modifier = Modifier.fillMaxWidth().clickable { vm.setLanguage(code); langDialog = false }.padding(vertical = 12.dp))
                 }
+            }
             }
         }, confirmButton = { TextButton(onClick = { langDialog = false }) { Text("Close") } })
 }
