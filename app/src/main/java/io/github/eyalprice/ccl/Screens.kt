@@ -194,11 +194,10 @@ private fun inputIcon(i: Input) = when {
 fun RadioScreen(st: StereoState, vm: StereoViewModel, onPlaying: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        Segmented(listOf("Presets", "Search", "Browse"), tab, { tab = it }, Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
+        Segmented(listOf("Presets", "Search"), tab.coerceAtMost(1), { tab = it }, Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
         when (tab) {
             0 -> PresetList(st, vm, onPlaying)
-            1 -> StationSearch(st, vm, onPlaying)
-            else -> MenuBrowser(vm, rootIcon = "AIRABLE", rootName = "Radio", onPlaying = onPlaying)
+            else -> StationSearch(st, vm, onPlaying)
         }
     }
 }
@@ -390,9 +389,8 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
     LaunchedEffect(rootIcon) {
         busy = true
         val top = vm.menuTop()
-        val root = top?.items?.firstOrNull { it.icon == rootIcon } ?: top?.items?.firstOrNull { it.name.contains(rootName, true) }
-        menu = if (root != null) vm.menuSelect(root) ?: vm.currentMenu() else top
-        error = if (menu == null) "The stereo's menu didn't load." else null
+        menu = openRoot(vm, rootIcon, rootName)
+        error = if (menu == null) "The stereo's music menu didn't open." else null
         busy = false
     }
     Column(Modifier.fillMaxSize()) {
@@ -412,9 +410,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
                 TextButton(onClick = {
                     busy = true; error = null
                     scope.launch {
-                        val top = vm.menuTop()
-                        val root = top?.items?.firstOrNull { i -> i.icon == rootIcon } ?: top?.items?.firstOrNull { i -> i.name.contains(rootName, true) }
-                        menu = if (root != null) vm.menuSelect(root) ?: vm.currentMenu() else top
+                        menu = openRoot(vm, rootIcon, rootName)
                         depth = 0
                         error = if (menu == null) "The stereo's menu still didn't load." else null
                         busy = false
@@ -424,7 +420,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
             }
         }
         LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
-            items(menu?.items ?: emptyList()) { item ->
+            items((menu?.items ?: emptyList()).filterNot { isDangerous(it) }) { item ->
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = !busy) {
                         busy = true
@@ -444,6 +440,25 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
             }
         }
     }
+}
+
+/** Never offer stereo-settings items such as factory reset or firmware update from a browse list. */
+private fun isDangerous(i: Reciva.MenuItem): Boolean {
+    val n = i.name.lowercase()
+    return i.icon == "CONFIGURE" || listOf("reset", "factory", "upgrade", "firmware", "update", "wipe", "erase", "setting", "network config")
+        .any { n.contains(it) }
+}
+
+/**
+ * Opens one branch of the stereo's menu (e.g. Music Library). Returns null unless the stereo really
+ * shows that branch, so the user never lands in an unrelated menu such as Settings.
+ */
+private suspend fun openRoot(vm: StereoViewModel, rootIcon: String, rootName: String): Reciva.Menu? {
+    val top = vm.menuTop() ?: return null
+    val root = top.items.firstOrNull { it.icon == rootIcon } ?: top.items.firstOrNull { it.name.contains(rootName, true) } ?: return null
+    val m = vm.menuSelect(root) ?: return null
+    if (m.atTop || m.id == top.id) return null
+    return m
 }
 
 @Composable
@@ -531,7 +546,7 @@ private fun signed(v: Int) = if (v > 0) "+$v" else "$v"
 // ====================================================================== Settings
 
 @Composable
-fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update: String?) {
+fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update: String?, onCheckUpdate: () -> Unit) {
     val ctx = LocalContext.current
     var langDialog by remember { mutableStateOf(false) }
     fun open(url: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -564,7 +579,9 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         SectionLabel("App")
         Panel(Modifier.fillMaxWidth()) {
             RowItem("Version", version)
-            RowItem("Updates", update ?: "Up to date") { open("https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest") }
+            RowItem("Updates", update ?: "Check now") {
+                if (update != null && update.startsWith("New")) open("https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest") else onCheckUpdate()
+            }
             RowItem("Change stereo") { vm.forget() }
         }
         SectionLabel("Feedback")

@@ -48,10 +48,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = C.Bg.toArgb()
         window.navigationBarColor = C.Bar.toArgb()
-        setContent { CclTheme { App(vm, versionName(), versionCode()) } }
+        setContent { CclTheme { App(vm, versionName(), versionCode(), starts.intValue) } }
     }
 
-    override fun onStart() { super.onStart(); vm.setForeground(true) }
+    /** Counts each time the app comes to the front, so the update check runs again then. */
+    private val starts = mutableIntStateOf(0)
+
+    override fun onStart() { super.onStart(); vm.setForeground(true); starts.intValue++ }
     override fun onStop() { vm.setForeground(false); super.onStop() }
 
     /** The phone's side volume keys control the stereo while the app is open. */
@@ -73,34 +76,49 @@ class MainActivity : ComponentActivity() {
     } catch (e: Exception) { 0 }
 }
 
-/** Asks GitHub for the newest release; returns (tag, download url) when it is newer than this build. */
-private suspend fun newerRelease(current: Long): Pair<String, String>? = withContext(Dispatchers.IO) {
+/** Result of asking GitHub: newer = (tag, url) when there is a newer build; failed when GitHub couldn't be reached. */
+private data class UpdateCheck(val newer: Pair<String, String>?, val failed: Boolean)
+
+/** Asks GitHub for the newest release and compares its build number with this one. */
+private suspend fun checkRelease(current: Long): UpdateCheck = withContext(Dispatchers.IO) {
     try {
         val c = URL("https://api.github.com/repos/EyalPrice/CambridgeConnectLegacy/releases/latest").openConnection() as HttpURLConnection
         c.connectTimeout = 5000
         c.readTimeout = 5000
         c.setRequestProperty("Accept", "application/vnd.github+json")
-        if (c.responseCode != 200) return@withContext null
+        if (c.responseCode != 200) return@withContext UpdateCheck(null, true)
         val rel = JSONObject(c.inputStream.bufferedReader().readText())
         val tag = rel.optString("tag_name")
-        val n = tag.substringAfterLast('.').toLongOrNull() ?: return@withContext null
+        val n = tag.substringAfterLast('.').toLongOrNull() ?: return@withContext UpdateCheck(null, true)
         val assets = rel.optJSONArray("assets")
         val url = if (assets != null && assets.length() > 0) assets.getJSONObject(0).optString("browser_download_url") else rel.optString("html_url")
-        if (n > current) tag to url else null
-    } catch (e: Exception) { null }
+        UpdateCheck(if (n > current) tag to url else null, false)
+    } catch (e: Exception) { UpdateCheck(null, true) }
 }
 
 @Composable
-fun App(vm: StereoViewModel, version: String, versionCode: Long) {
+fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
     val st by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     var tab by rememberSaveable { mutableStateOf(Tab.PLAY) }
     var page by rememberSaveable { mutableStateOf<Page?>(null) }
     var powerOff by remember { mutableStateOf(false) }
     var update by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var checkTick by remember { mutableIntStateOf(0) }
     val snack = remember { SnackbarHostState() }
 
-    LaunchedEffect(Unit) { update = newerRelease(versionCode) }
+    LaunchedEffect(starts, checkTick) {
+        updateStatus = "Checking…"
+        val r = checkRelease(versionCode)
+        update = r.newer
+        updateStatus = when {
+            r.newer != null -> "New: ${r.newer.first}"
+            r.failed -> "Couldn't check – tap to retry"
+            else -> "Up to date"
+        }
+        if (checkTick > 0 && r.newer == null && !r.failed) vm.toast("You have the newest version.")
+    }
 
     // Lock-screen controls and locked volume keys need the media service; Android 13+ also asks for notifications.
     val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -147,7 +165,7 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long) {
             Box(Modifier.weight(1f)) {
                 when (page) {
                     Page.SOUND -> SoundScreen(st, vm)
-                    Page.SETTINGS -> SettingsScreen(st, vm, version, update?.first?.let { "New: $it" })
+                    Page.SETTINGS -> SettingsScreen(st, vm, version, updateStatus) { checkTick++ }
                     Page.QUEUE -> QueueScreen(st, vm)
                     Page.CHECK -> CheckScreen(vm, version)
                     Page.EXPLORER -> ExplorerScreen(vm)
