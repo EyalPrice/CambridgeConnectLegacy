@@ -399,7 +399,11 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { s -> s.copy(inputs = s.inputs.map { if (it.number == n) it.copy(name = name) else it }) }
         }
 
-    fun playPreset(n: Int) = send("PlayPreset", "NewPresetNumberValue" to n.toString())
+    /** Plays a preset and remembers its slot, so next/back continue from the right place even when two slots hold the same station. */
+    fun playPreset(n: Int) {
+        lastStepPreset = n
+        send("PlayPreset", "NewPresetNumberValue" to n.toString())
+    }
 
     /** Saves the station that is playing now into preset [n] and tells the user whether it worked. */
     fun saveCurrentAsPreset(n: Int) {
