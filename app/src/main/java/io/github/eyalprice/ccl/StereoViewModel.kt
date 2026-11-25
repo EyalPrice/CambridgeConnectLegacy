@@ -56,6 +56,8 @@ data class StereoState(
     val playPending: Boolean = false,
     /** Slot the app last started (tap, next or back). Used to tell apart slots holding the same station. */
     val lastPreset: Int = 0,
+    /** True from tapping a preset (or next/back on radio) until the stereo reports the new station. */
+    val tuning: Boolean = false,
 ) {
     /** The preset now playing: the slot last started if its name still matches, otherwise the first slot with that name. */
     val playingPreset: Reciva.Preset?
@@ -353,6 +355,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(conn = Conn.OK, power = power, sourceNumber = src,
                 volume = vol ?: it.volume, muted = mute == "1" || mute.equals("true", true),
+                tuning = keepStep,
                 transport = if (hold || keepStep) it.transport else transport,
                 playback = when {
                     keepStep -> it.playback
@@ -412,7 +415,14 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     /** Plays a preset and remembers its slot, so next/back continue from the right place even when two slots hold the same station. */
     fun playPreset(n: Int) {
         lastStepPreset = n
-        _state.update { it.copy(lastPreset = n) }
+        // Show the new station's name at once, with a spinner, until the stereo has tuned in.
+        val title = _state.value.presets.firstOrNull { it.number == n }?.title.orEmpty()
+        if (title.isNotBlank()) {
+            pendingStepTitle = title
+            pendingStepUntil = System.currentTimeMillis() + 15000
+            _state.update { it.copy(lastPreset = n, tuning = true, transport = "PLAYING",
+                playback = it.playback.copy(title = title, state = "Playing", artist = "", artUrl = "", format = "")) }
+        } else _state.update { it.copy(lastPreset = n) }
         send("PlayPreset", "NewPresetNumberValue" to n.toString())
     }
 
@@ -497,10 +507,6 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val next = if (cur == null) { if (dir > 0) saved.first() else saved.last() }
             else { val i = saved.indexOf(cur); saved[(i + dir + saved.size) % saved.size] }
         lastStepPreset = next
-        val title = st.presets.first { it.number == next }.title
-        pendingStepTitle = title
-        pendingStepUntil = System.currentTimeMillis() + 10000
-        _state.update { it.copy(transport = "PLAYING", playback = it.playback.copy(title = title, state = "Playing", artist = "", artUrl = "")) }
         playPreset(next)
     }
 

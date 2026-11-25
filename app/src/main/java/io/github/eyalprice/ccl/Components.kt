@@ -198,7 +198,11 @@ fun MiniPlayer(st: StereoState, title: String, onOpen: () -> Unit, vm: StereoVie
             ArtBox(if (st.hasMetadata) st.playback.artUrl else "", 38.dp, 8.dp)
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(title, color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    if (st.tuning) CircularProgressIndicator(Modifier.padding(start = 6.dp).size(12.dp), color = C.Accent, strokeWidth = 1.5.dp)
+                }
                 Text("${st.sourceName} · Vol ${st.volume}", color = C.Muted, fontSize = 11.sp, maxLines = 1)
             }
         }
@@ -371,7 +375,9 @@ fun SearchField(value: String, onChange: (String) -> Unit, hint: String = "Searc
  * (launching it, or bringing it to the front), because Spotify Connect playback starts there.
  */
 fun playPressed(ctx: android.content.Context, st: StereoState, vm: StereoViewModel, playing: Boolean) {
-    if (st.isSpotify && !playing) {
+    // Open the Spotify app only when no phone is connected to the stereo's Spotify yet;
+    // a paused session that is already connected just resumes here.
+    if (st.isSpotify && !playing && !st.playback.spotifyActive) {
         val open = ctx.packageManager.getLaunchIntentForPackage("com.spotify.music")
         if (open == null) {
             android.widget.Toast.makeText(ctx, "Spotify isn't installed on this phone.", android.widget.Toast.LENGTH_SHORT).show()
@@ -379,8 +385,6 @@ fun playPressed(ctx: android.content.Context, st: StereoState, vm: StereoViewMod
             open.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             ctx.startActivity(open)
         }
-        // A paused Spotify session on the stereo can still be resumed from here.
-        if (st.playback.spotifyActive) vm.togglePlay()
         return
     }
     vm.togglePlay()

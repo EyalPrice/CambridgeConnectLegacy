@@ -109,7 +109,13 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
                 ArtBox(if (st.hasMetadata) pb.artUrl else "", if (st.isSpotify) 96.dp else 72.dp)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(label, color = C.Accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.3.sp, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, color = C.Accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.3.sp, maxLines = 1)
+                        if (st.tuning) {
+                            CircularProgressIndicator(Modifier.padding(start = 8.dp).size(12.dp), color = C.Accent, strokeWidth = 1.5.dp)
+                            Text("  Tuning…", color = C.Muted, fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
                     Text(title, color = C.Text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(subtitle, color = C.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
