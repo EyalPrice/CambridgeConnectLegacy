@@ -2,14 +2,13 @@
 
 **[⬇ Download the app (APK)](https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest/download/CambridgeConnectLegacy.apk)** · **[Website](https://eyalprice.github.io/CambridgeConnectLegacy/)**
 
-A free **Cambridge Connect alternative** for Android: a 64-bit replacement for the retired Cambridge Connect app.
+A free **Cambridge Connect alternative** for Android. Works on old and new Android phones, 32-bit and 64-bit.
 
 **Unofficial** Android Wi-Fi remote for legacy Cambridge Audio network streamers:
 **Minx Xi, NP30 and Stream Magic 6 (v1)**.
 
-Cambridge Audio's original *Cambridge Connect* app was 32-bit only, and it has been retired. It can't be installed
-on modern 64-bit-only phones. The newer StreamMagic app doesn't support these models.
-This app fills that gap.
+These lovely stereos were controlled by Cambridge Audio's *Cambridge Connect* app. This community app lets owners
+keep controlling them from any Android phone, old or new.
 
 > Not made by, endorsed by or affiliated with Cambridge Audio.
 > Cambridge Audio, Minx, Stream Magic and Cambridge Connect are trademarks of their owner and are used here only to
