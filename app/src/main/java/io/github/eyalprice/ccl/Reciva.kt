@@ -131,6 +131,17 @@ object Reciva {
         }.toList()
     }
 
+    /** Lists like <locations><location id="13">Australia</location>…, used for countries and genres. */
+    fun idNames(xml: String?, tag: String): List<Pair<String, String>> {
+        val s = xmlValue(xml)
+        return Regex("<$tag([^>]*)>(.*?)</$tag>", DOT).findAll(s).mapNotNull { m ->
+            val id = attr(m.groupValues[1], "id") ?: return@mapNotNull null
+            val inner = m.groupValues[2]
+            val name = tag(inner, "name") ?: unescape(inner.replace(Regex("<[^>]+>"), "").trim())
+            if (name.isBlank()) null else id to name
+        }.toList()
+    }
+
     data class Track(val id: Int, val title: String, val artist: String)
 
     fun tracks(xml: String?): List<Track> {

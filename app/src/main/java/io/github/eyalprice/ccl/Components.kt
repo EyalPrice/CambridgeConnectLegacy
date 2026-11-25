@@ -125,10 +125,17 @@ fun TopBar(title: String, st: StereoState, onSound: () -> Unit, onSettings: () -
                     .semantics { contentDescription = "Power. Tap for standby, hold for full off" },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.PowerSettingsNew, null,
-                    tint = if (st.standby || st.conn != Conn.OK) C.Muted else C.Green, modifier = Modifier.size(20.dp))
+                val (icon, tint) = when {
+                    st.conn != Conn.OK -> Icons.Filled.PowerOff to C.Muted
+                    st.power == "ON" -> Icons.Filled.PowerSettingsNew to C.Green
+                    st.power == "IDLE" -> Icons.Filled.Bedtime to C.Accent
+                    st.power == "OFF" -> Icons.Filled.PowerOff to C.Muted
+                    else -> Icons.Filled.PowerSettingsNew to C.Muted
+                }
+                Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
             }
-            Text("Power", color = C.Text, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+            Text(when { st.conn != Conn.OK -> "Power"; st.power == "IDLE" -> "Standby"; st.power == "OFF" -> "Off"; else -> "On" },
+                color = C.Text, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
         }
     }
 }
@@ -270,15 +277,16 @@ fun VolumeKnob(value: Int, max: Int, muted: Boolean, onChange: (Int) -> Unit, mo
 }
 
 @Composable
-fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit, enabled: Boolean = true) {
+fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit, enabled: Boolean = true,
+            minusLabel: String = "−", plusLabel: String = "+") {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
         OutlinedButton(onClick = onMinus, enabled = enabled, border = BorderStroke(1.dp, C.Line2),
-            modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text("−", color = C.Text, fontSize = 22.sp) }
+            modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text(minusLabel, color = C.Text, fontSize = if (minusLabel.length > 1) 14.sp else 20.sp, fontWeight = FontWeight.SemiBold) }
         Text(value, color = C.Accent, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.width(72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         OutlinedButton(onClick = onPlus, enabled = enabled, border = BorderStroke(1.dp, C.Line2),
-            modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text("+", color = C.Text, fontSize = 22.sp) }
+            modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text(plusLabel, color = C.Text, fontSize = if (plusLabel.length > 1) 14.sp else 20.sp, fontWeight = FontWeight.SemiBold) }
     }
 }
 

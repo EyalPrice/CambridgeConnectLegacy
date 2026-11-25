@@ -181,7 +181,37 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 else -> ""
             }
         }
-        return try { Upnp.call(s, action, map, timeoutMs) } catch (e: Exception) { null }
+        val t0 = System.currentTimeMillis()
+        return try {
+            Upnp.call(s, action, map, timeoutMs).also { r ->
+                log("$action $map → HTTP ${r.httpCode} (${System.currentTimeMillis() - t0} ms)\n" +
+                    (if (r.ok()) r.out.entries.joinToString("\n") { "  ${it.key} = ${it.value.take(1500)}" } else "  " + r.body.take(800)))
+            }
+        } catch (e: Exception) {
+            log("$action $map → ${e.javaClass.simpleName} after ${System.currentTimeMillis() - t0} ms")
+            null
+        }
+    }
+
+    // ------------------------------------------------------------ debug log
+
+    private val debug = ArrayDeque<String>()
+
+    private fun log(line: String) {
+        if (line.startsWith("GetPowerState") || line.startsWith("GetVolume") || line.startsWith("GetMute") ||
+            line.startsWith("GetTransportInfo") || line.startsWith("GetAudioSourceByNumber") ||
+            line.startsWith("GetPlaybackDetails") || line.startsWith("GetSpotifyPlaybackPosition")) return // skip routine polling
+        synchronized(debug) {
+            debug.addLast(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date()) + " " + line)
+            while (debug.size > 120) debug.removeFirst()
+        }
+    }
+
+    /** Recent commands and replies (routine status polling left out), with private details removed. */
+    fun debugLog(): String {
+        val body = synchronized(debug) { debug.joinToString("\n\n") }
+        val d = device
+        return StereoCheck.sanitize("Cambridge Connect Legacy debug log\nStereo: ${d?.manufacturer} ${d?.modelName}\n\n$body", d?.host() ?: "")
     }
 
     private fun out(action: String, vararg args: Pair<String, String>): String? =
@@ -196,6 +226,13 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The stereo forgets browsing sessions (for example after standby); register again when needed. */
+    private fun ensureNavigator() {
+        val id = navId
+        if (id != null && callBlocking("IsRegisteredNavigatorId", "NavigatorId" to id)?.out?.get("IsRegistered") == "1") return
+        registerNavigator()
+    }
+
     private fun registerNavigator() {
         val name = prefs.getString("navName", null) ?: ("CCL-" + UUID.randomUUID().toString().take(8)).also {
             prefs.edit().putString("navName", it).apply()
@@ -203,6 +240,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val existing = callBlocking("IsRegisteredNavigatorName", "NavigatorName" to name)
         navId = if (existing != null && existing.out["IsRegistered"] == "1") existing.out["RetNavigatorId"]
         else callBlocking("RegisterNamedNavigator", "NewNavigatorName" to name)?.out?.get("RetNavigatorId")
+            ?: callBlocking("RegisterNavigator")?.out?.get("RetNavigatorId")
     }
 
     // ------------------------------------------------------------ static data
@@ -410,33 +448,87 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------------------ menus, search, queue
 
     suspend fun menuTop(): Reciva.Menu? = withContext(Dispatchers.IO) {
-        callBlocking("GoTopAndGetResponse")
-        currentMenu()
+        ensureNavigator()
+        callBlocking("GoTopAndGetResponse", timeoutMs = 15000)
+        currentMenu() ?: run {
+            registerNavigator()
+            callBlocking("GoTopAndGetResponse", timeoutMs = 15000)
+            currentMenu()
+        }
     }
 
     suspend fun currentMenu(): Reciva.Menu? = withContext(Dispatchers.IO) {
-        val r = callBlocking("GetMenuAtOffset", "Count" to "100", "Offset" to "0")
-        Reciva.menu(r?.out?.get("RetMenuXML")) ?: Reciva.menu(out("GetMenu"))
+        val r = callBlocking("GetMenuAtOffset", "Count" to "50", "Offset" to "0", timeoutMs = 15000)
+        Reciva.menu(r?.out?.get("RetMenuXML")) ?: Reciva.menu(callBlocking("GetMenu", timeoutMs = 15000)?.out?.get("RetMenuXML"))
     }
 
-    /** Selects an item. Returns the new menu, or null when the item started playback. */
+    private fun same(a: Reciva.Menu?, b: Reciva.Menu?) = a != null && b != null && a.id == b.id && a.items == b.items
+
+    /**
+     * Selects an item. Returns the new menu, or null when the item started playback.
+     * Internet radio menus load from the internet, so the new menu can take a few seconds to appear.
+     */
     suspend fun menuSelect(item: Reciva.MenuItem): Reciva.Menu? = withContext(Dispatchers.IO) {
+        ensureNavigator()
         val before = currentMenu()
-        callBlocking("SelectItemAndGetResponse", "NewMenuItemId" to item.id.toString(), timeoutMs = 20000)
-        val after = currentMenu()
-        if (after == null || (before != null && after.id == before.id && after.items == before.items)) null else after
+        callBlocking("SelectItemAndGetResponse", "NewMenuItemId" to item.id.toString(), timeoutMs = 30000)
+        var after = currentMenu()
+        var tries = 0
+        while ((after == null || same(before, after) || (after.items.isEmpty() && after.count > 0)) && tries < 12) {
+            delay(700)
+            after = currentMenu()
+            tries++
+        }
+        if (after == null || same(before, after)) null else after
     }
 
     suspend fun menuBack(): Reciva.Menu? = withContext(Dispatchers.IO) {
-        callBlocking("GoBackAndGetResponse")
+        ensureNavigator()
+        callBlocking("GoBackAndGetResponse", timeoutMs = 15000)
         currentMenu()
     }
 
     data class SearchResult(val stations: List<Reciva.Station>, val raw: String, val error: String?)
+    data class Choice(val id: String, val name: String)
 
-    suspend fun searchStations(query: String): SearchResult = withContext(Dispatchers.IO) {
-        val r = callBlocking("SearchForStationByName", "StationName" to query, timeoutMs = 30000)
-        if (r == null) return@withContext SearchResult(emptyList(), "", "The stereo didn't answer in time. Try again.")
+    private var genreCache: List<Choice>? = null
+    private var locationCache: List<Choice>? = null
+
+    suspend fun genres(): List<Choice> = withContext(Dispatchers.IO) {
+        genreCache ?: Reciva.idNames(callBlocking("GetGenreList", timeoutMs = 45000)?.out?.get("GenreXML"), "genre")
+            .map { Choice(it.first, it.second) }.also { if (it.isNotEmpty()) genreCache = it }
+    }
+
+    suspend fun locations(): List<Choice> = withContext(Dispatchers.IO) {
+        locationCache ?: Reciva.idNames(callBlocking("GetLocationList", timeoutMs = 30000)?.out?.get("LocationXML"), "location")
+            .map { Choice(it.first, it.second) }.also { if (it.isNotEmpty()) locationCache = it }
+    }
+
+    /**
+     * Station search. Uses the stereo's filtered search (name, country, genre) like the original
+     * Cambridge Connect app; the firmware's expected "no filter" value isn't documented, so a few
+     * spellings are tried and the one that works is remembered. Falls back to search-by-name.
+     */
+    suspend fun searchStations(query: String, locationId: String?, genreId: String?): SearchResult = withContext(Dispatchers.IO) {
+        if (has("Search")) {
+            val saved = prefs.getInt("searchVariant", -1)
+            val variants = listOf("" to "0", "-1" to "0", "-1" to "-1", "" to "", "0" to "0")
+            val order = if (saved in variants.indices) listOf(saved) + variants.indices.filter { it != saved } else variants.indices.toList()
+            for (i in order) {
+                val (none, rate) = variants[i]
+                val r = callBlocking("Search", "NameFilter" to query, "CodecFilter" to "",
+                    "LocationIDFilter" to (locationId ?: none), "GenreIDFilter" to (genreId ?: none),
+                    "MinBitrateFilter" to rate, timeoutMs = 45000) ?: continue
+                if (r.ok()) {
+                    prefs.edit().putInt("searchVariant", i).apply()
+                    val raw = r.out["ResultXML"] ?: ""
+                    return@withContext SearchResult(Reciva.stations(raw), raw, null)
+                }
+            }
+        }
+        if (query.isBlank()) return@withContext SearchResult(emptyList(), "", "Type part of a station name, or pick a country or genre.")
+        val r = callBlocking("SearchForStationByName", "StationName" to query, timeoutMs = 45000)
+            ?: return@withContext SearchResult(emptyList(), "", "The stereo didn't answer in time. Try again.")
         if (!r.ok()) return@withContext SearchResult(emptyList(), r.body, "Search isn't available right now.")
         val raw = r.out["ResultXML"] ?: ""
         SearchResult(Reciva.stations(raw), raw, null)

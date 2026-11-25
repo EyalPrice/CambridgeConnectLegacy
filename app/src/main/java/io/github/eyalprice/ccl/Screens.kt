@@ -258,43 +258,89 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
 @Composable
 private fun StationSearch(st: StereoState, vm: StereoViewModel, onPlaying: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var q by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<StereoViewModel.SearchResult?>(null) }
     var saveFor by remember { mutableStateOf<Reciva.Station?>(null) }
+    var country by remember { mutableStateOf<StereoViewModel.Choice?>(null) }
+    var genre by remember { mutableStateOf<StereoViewModel.Choice?>(null) }
+    var picker by remember { mutableStateOf<String?>(null) }
     fun go() {
-        if (q.isBlank() || busy) return
+        if (busy || (q.isBlank() && country == null && genre == null)) return
         busy = true
-        scope.launch { result = vm.searchStations(q.trim()); busy = false }
+        scope.launch { result = vm.searchStations(q.trim(), country?.id, genre?.id); busy = false }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        OutlinedTextField(q, { q = it }, label = { Text("Station name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        OutlinedTextField(q, { q = it }, label = { Text("Station name (part is enough)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { go() }),
             trailingIcon = { IconButton(onClick = { go() }) { Icon(Icons.Filled.Search, "Search") } })
-        if (busy) Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = country != null, onClick = { picker = "country" },
+                label = { Text(country?.name ?: "Any country", maxLines = 1) },
+                trailingIcon = { Icon(Icons.Filled.ExpandMore, null, Modifier.size(16.dp)) })
+            FilterChip(selected = genre != null, onClick = { picker = "genre" },
+                label = { Text(genre?.name ?: "Any genre", maxLines = 1) },
+                trailingIcon = { Icon(Icons.Filled.ExpandMore, null, Modifier.size(16.dp)) })
+        }
+        PrimaryButton("Search", { go() }, Modifier.padding(top = 8.dp), enabled = !busy)
+        if (busy) Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(Modifier.size(20.dp), color = C.Accent, strokeWidth = 2.dp)
-            Text("  Searching… the stereo can take up to 30 seconds.", color = C.Muted, fontSize = 13.sp)
+            Text("  Searching… the stereo can take up to 45 seconds.", color = C.Muted, fontSize = 13.sp)
         }
         val r = result
-        when {
-            r == null -> {}
-            r.error != null -> Text(r.error, color = C.Muted, modifier = Modifier.padding(top = 16.dp))
-            r.stations.isEmpty() && r.raw.isNotBlank() -> Text("The stereo answered in a format this version doesn't read yet. Run Pro › Stereo check and share the report so it can be added.",
-                color = C.Muted, modifier = Modifier.padding(top = 16.dp))
-            r.stations.isEmpty() -> Text("No stations found.", color = C.Muted, modifier = Modifier.padding(top = 16.dp))
-            else -> LazyColumn(Modifier.padding(top = 8.dp)) {
-                items(r.stations) { s ->
-                    Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CircleIconButton(Icons.Filled.PlayArrow, "Play ${s.name}", { vm.playStation(s.id); onPlaying() }, size = 40.dp)
-                        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                            Text(s.name, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (s.detail.isNotBlank()) Text(s.detail, color = C.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        OutlinedButton(onClick = { saveFor = s }) { Text("Save", color = C.Accent) }
+        val problem = when {
+            r == null || busy -> null
+            r.error != null -> r.error
+            r.stations.isEmpty() && r.raw.isNotBlank() -> "The stereo answered in a format this version doesn't read yet."
+            r.stations.isEmpty() -> "No stations found. Try fewer letters, or another country or genre."
+            else -> null
+        }
+        if (problem != null) {
+            Text(problem, color = C.Muted, modifier = Modifier.padding(top = 12.dp))
+            TextButton(onClick = { shareText(ctx, "Cambridge Connect Legacy debug log", vm.debugLog()) }) {
+                Text("Share debug log with the developer", color = C.Accent)
+            }
+        }
+        if (r != null && !busy && r.stations.isNotEmpty()) LazyColumn(Modifier.padding(top = 8.dp)) {
+            items(r.stations) { s ->
+                Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircleIconButton(Icons.Filled.PlayArrow, "Play ${s.name}", { vm.playStation(s.id); onPlaying() }, size = 40.dp)
+                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                        Text(s.name, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (s.detail.isNotBlank()) Text(s.detail, color = C.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    OutlinedButton(onClick = { saveFor = s }) { Text("Save", color = C.Accent) }
                 }
             }
         }
+    }
+    picker?.let { kind ->
+        var list by remember(kind) { mutableStateOf<List<StereoViewModel.Choice>?>(null) }
+        var filter by remember(kind) { mutableStateOf("") }
+        LaunchedEffect(kind) { list = if (kind == "country") vm.locations() else vm.genres() }
+        AlertDialog(onDismissRequest = { picker = null }, title = { Text(if (kind == "country") "Country" else "Genre") },
+            text = {
+                Column {
+                    OutlinedTextField(filter, { filter = it }, label = { Text("Filter") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    val l = list
+                    if (l == null) Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), color = C.Accent, strokeWidth = 2.dp)
+                        Text("  Loading from the stereo…", color = C.Muted)
+                    } else if (l.isEmpty()) Text("The stereo didn't send the list. Try again later.", color = C.Muted, modifier = Modifier.padding(top = 12.dp))
+                    else LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                        item {
+                            Text(if (kind == "country") "Any country" else "Any genre", color = C.Accent,
+                                modifier = Modifier.fillMaxWidth().clickable { if (kind == "country") country = null else genre = null; picker = null }.padding(vertical = 12.dp))
+                        }
+                        items(l.filter { filter.isBlank() || it.name.contains(filter, true) }) { c ->
+                            Text(c.name, color = C.Text, modifier = Modifier.fillMaxWidth()
+                                .clickable { if (kind == "country") country = c else genre = c; picker = null }.padding(vertical = 12.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { picker = null }) { Text("Close") } })
     }
     saveFor?.let { s ->
         SlotPicker(st, "Save “${s.name}”", onPick = { n ->
@@ -303,6 +349,11 @@ private fun StationSearch(st: StereoState, vm: StereoViewModel, onPlaying: () ->
             scope.launch { delay(4000); vm.saveCurrentAsPreset(n) }
         }, onDismiss = { saveFor = null })
     }
+}
+
+fun shareText(ctx: android.content.Context, subject: String, text: String) {
+    val i = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, subject).putExtra(Intent.EXTRA_TEXT, text)
+    ctx.startActivity(Intent.createChooser(i, subject))
 }
 
 @Composable
@@ -342,7 +393,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
         val top = vm.menuTop()
         val root = top?.items?.firstOrNull { it.icon == rootIcon } ?: top?.items?.firstOrNull { it.name.contains(rootName, true) }
         menu = if (root != null) vm.menuSelect(root) ?: vm.currentMenu() else top
-        error = if (menu == null) "The stereo's menu didn't load. Is it switched on?" else null
+        error = if (menu == null) "The stereo's menu didn't load." else null
         busy = false
     }
     Column(Modifier.fillMaxSize()) {
@@ -355,7 +406,24 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
                 modifier = Modifier.padding(start = if (depth > 0) 0.dp else 8.dp).weight(1f))
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = C.Accent, strokeWidth = 2.dp)
         }
-        error?.let { Text(it, color = C.Muted, modifier = Modifier.padding(20.dp)) }
+        error?.let {
+            Text(it, color = C.Muted, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp))
+            val ctx = LocalContext.current
+            Row(Modifier.padding(horizontal = 12.dp)) {
+                TextButton(onClick = {
+                    busy = true; error = null
+                    scope.launch {
+                        val top = vm.menuTop()
+                        val root = top?.items?.firstOrNull { i -> i.icon == rootIcon } ?: top?.items?.firstOrNull { i -> i.name.contains(rootName, true) }
+                        menu = if (root != null) vm.menuSelect(root) ?: vm.currentMenu() else top
+                        depth = 0
+                        error = if (menu == null) "The stereo's menu still didn't load." else null
+                        busy = false
+                    }
+                }) { Text("Try again", color = C.Accent) }
+                TextButton(onClick = { shareText(ctx, "Cambridge Connect Legacy debug log", vm.debugLog()) }) { Text("Share debug log", color = C.Accent) }
+            }
+        }
         LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
             items(menu?.items ?: emptyList()) { item ->
                 Row(
@@ -437,7 +505,7 @@ fun SoundScreen(st: StereoState, vm: StereoViewModel) {
                 Stepper("Volume", "${st.volume}", { vm.volumeStep(-1) }, { vm.volumeStep(1) })
                 st.bass?.let { b -> Stepper("Bass", signed(b), { vm.setTone("bass", b - 1) }, { vm.setTone("bass", b + 1) }) }
                 st.treble?.let { t -> Stepper("Treble", signed(t), { vm.setTone("treble", t - 1) }, { vm.setTone("treble", t + 1) }) }
-                st.balance?.let { b -> Stepper("Balance", if (b == 0) "Centre" else if (b < 0) "L ${-b}" else "R $b", { vm.balanceStep(-1) }, { vm.balanceStep(1) }) }
+                st.balance?.let { b -> Stepper("Balance", if (b == 0) "Centre" else if (b < 0) "L ${-b}" else "R $b", { vm.balanceStep(-1) }, { vm.balanceStep(1) }, minusLabel = "L", plusLabel = "R") }
                 if (st.balance != null) Text("Balance moves in small steps, up to 16 either side.", color = C.Muted, fontSize = 12.sp)
             }
         }
@@ -586,6 +654,10 @@ fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplo
             Text("${f.name.ifBlank { "(no name)" }} · ${f.model}" + if (f.cambridge) "  ★ Cambridge" else "",
                 color = if (f.cambridge) C.Accent else C.Text, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
         }
+        SectionLabel("Troubleshooting")
+        val ctx = LocalContext.current
+        GhostButton("Share debug log", { shareText(ctx, "Cambridge Connect Legacy debug log", vm.debugLog()) }, Modifier.fillMaxWidth())
+        Text("Recent commands and the stereo's replies, without your network addresses.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         SectionLabel("Zones")
         Text("This stereo has a single zone.", color = C.Muted, fontSize = 13.sp)
         Spacer(Modifier.height(24.dp))
