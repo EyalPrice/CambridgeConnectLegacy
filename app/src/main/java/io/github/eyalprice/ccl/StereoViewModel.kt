@@ -334,12 +334,21 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 dur = it["Duration"]?.toIntOrNull() ?: 0
             }
         }
-        val hold = System.currentTimeMillis() < playHoldUntil
+        val now = System.currentTimeMillis()
+        val hold = now < playHoldUntil
+        // After next/back on radio, keep showing the chosen station until the stereo reports it (no flicker).
+        val stepTitle = pendingStepTitle
+        val keepStep = stepTitle != null && now < pendingStepUntil && !pb.title.equals(stepTitle, true)
+        if (stepTitle != null && !keepStep) pendingStepTitle = null
         _state.update {
             it.copy(conn = Conn.OK, power = power, sourceNumber = src,
                 volume = vol ?: it.volume, muted = mute == "1" || mute.equals("true", true),
-                transport = if (hold) it.transport else transport,
-                playback = if (hold) pb.copy(state = it.playback.state, spotifyPlaying = it.playback.spotifyPlaying) else pb,
+                transport = if (hold || keepStep) it.transport else transport,
+                playback = when {
+                    keepStep -> it.playback
+                    hold -> pb.copy(state = it.playback.state, spotifyPlaying = it.playback.spotifyPlaying)
+                    else -> pb
+                },
                 spotifyPos = pos, spotifyDur = dur)
         }
         true
@@ -451,6 +460,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Last preset started via next/back, so repeated presses keep stepping even before the title updates. */
     @Volatile private var lastStepPreset = 0
+    @Volatile private var pendingStepTitle: String? = null
+    @Volatile private var pendingStepUntil = 0L
 
     fun transport(action: String) {
         val st = _state.value
@@ -463,14 +474,18 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val st = _state.value
         val saved = st.presets.filter { it.title.isNotBlank() }.map { it.number }.sorted()
         if (saved.isEmpty()) return
-        val byTitle = st.presets.firstOrNull { it.title.isNotBlank() && it.title == st.playback.title }?.number
-        val cur = byTitle ?: lastStepPreset.takeIf { it in saved }
+        // Prefer the slot we last jumped to, so two slots holding the same station don't trap next/back.
+        val titleOf = { n: Int -> st.presets.firstOrNull { it.number == n }?.title ?: "" }
+        val last = lastStepPreset.takeIf { it in saved && titleOf(it).equals(st.playback.title, true) }
+        val byTitle = st.presets.firstOrNull { it.title.isNotBlank() && it.title.equals(st.playback.title, true) }?.number
+        val cur = last ?: byTitle ?: lastStepPreset.takeIf { it in saved }
         val next = if (cur == null) { if (dir > 0) saved.first() else saved.last() }
             else { val i = saved.indexOf(cur); saved[(i + dir + saved.size) % saved.size] }
         lastStepPreset = next
         val title = st.presets.first { it.number == next }.title
-        playHoldUntil = System.currentTimeMillis() + 4000
-        _state.update { it.copy(transport = "PLAYING", playback = it.playback.copy(title = title, state = "Playing")) }
+        pendingStepTitle = title
+        pendingStepUntil = System.currentTimeMillis() + 10000
+        _state.update { it.copy(transport = "PLAYING", playback = it.playback.copy(title = title, state = "Playing", artist = "", artUrl = "")) }
         playPreset(next)
     }
 
