@@ -255,7 +255,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val about = linkedMapOf<String, String>()
         out("GetCurrentServicePack")?.let { about["Firmware"] = it }
         out("GetHardwareConfig")?.let { about["Hardware"] = it }
-        out("GetSerialNumber")?.let { about["Serial number"] = if (it.length > 3) "•••" + it.takeLast(3) else it }
+        // Shown in full here (it stays on the phone); shared reports and logs still hide most of it.
+        out("GetSerialNumber")?.let { about["Serial number"] = it }
         device?.let { about["Model"] = "${it.modelName} ${it.modelNumber}".trim() }
         val langs = callBlocking("GetDisplayLanguages")?.out
         val names = langs?.get("RetLanguageListValue")?.split(',') ?: emptyList()

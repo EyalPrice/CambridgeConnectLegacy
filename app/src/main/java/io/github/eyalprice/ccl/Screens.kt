@@ -562,13 +562,13 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         }
         SectionLabel("Stereo")
         Panel(Modifier.fillMaxWidth()) {
-            RowItem("Name", st.name)
+            RowItem("Stereo name", st.name)
             Column(Modifier.padding(14.dp)) {
-                Text("Display brightness", color = C.Text, fontSize = 14.sp)
+                Text("Stereo display brightness", color = C.Text, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 Segmented(listOf("Low", "Medium", "High"), st.brightness, { vm.setBrightness(it) })
             }
-            if (st.languages.isNotEmpty()) RowItem("Display language", st.language) { langDialog = true }
+            if (st.languages.isNotEmpty()) RowItem("Stereo display language", st.language) { langDialog = true }
         }
         SectionLabel("About this stereo")
         Panel(Modifier.fillMaxWidth()) {
@@ -614,10 +614,10 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         }
         Text("Unofficial app. Not affiliated with Cambridge Audio.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 14.dp))
     }
-    if (langDialog) AlertDialog(onDismissRequest = { langDialog = false }, title = { Text("Display language") },
+    if (langDialog) AlertDialog(onDismissRequest = { langDialog = false }, title = { Text("Stereo display language") },
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                items(st.languages) { (name, code) ->
+                items(st.languages.sortedBy { it.first.lowercase() }) { (name, code) ->
                     Text(name, color = if (name == st.language) C.Accent else C.Text,
                         modifier = Modifier.fillMaxWidth().clickable { vm.setLanguage(code); langDialog = false }.padding(vertical = 12.dp))
                 }
