@@ -205,7 +205,8 @@ fun MiniPlayer(st: StereoState, title: String, onOpen: () -> Unit, vm: StereoVie
         TextButton(onClick = { vm.volumeStep(-1) }) { Text("−", color = C.Text, fontSize = 20.sp) }
         TextButton(onClick = { vm.volumeStep(1) }) { Text("+", color = C.Text, fontSize = 20.sp) }
         val playing = st.transport == "PLAYING" || st.playback.spotifyPlaying
-        PlayButton(playing, st.playPending, 44.dp) { vm.togglePlay() }
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        PlayButton(playing, st.playPending, 44.dp) { playPressed(ctx, st, vm, playing) }
     }
 }
 
@@ -362,4 +363,25 @@ fun SearchField(value: String, onChange: (String) -> Unit, hint: String = "Searc
         leadingIcon = { Icon(Icons.Filled.Search, null) },
         trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Filled.Close, "Clear search") } },
         modifier = modifier.fillMaxWidth())
+}
+
+
+/**
+ * Play/pause from the app. On the Spotify input, pressing play also opens the Spotify app
+ * (launching it, or bringing it to the front), because Spotify Connect playback starts there.
+ */
+fun playPressed(ctx: android.content.Context, st: StereoState, vm: StereoViewModel, playing: Boolean) {
+    if (st.isSpotify && !playing) {
+        val open = ctx.packageManager.getLaunchIntentForPackage("com.spotify.music")
+        if (open == null) {
+            android.widget.Toast.makeText(ctx, "Spotify isn't installed on this phone.", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            open.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            ctx.startActivity(open)
+        }
+        // A paused Spotify session on the stereo can still be resumed from here.
+        if (st.playback.spotifyActive) vm.togglePlay()
+        return
+    }
+    vm.togglePlay()
 }

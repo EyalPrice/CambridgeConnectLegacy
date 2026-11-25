@@ -52,6 +52,7 @@ private fun fmt(sec: Int) = "%d:%02d".format(sec / 60, sec % 60)
 @Composable
 fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit, onQueue: () -> Unit) {
     val pb = st.playback
+    val ctx = LocalContext.current
     val title: String
     val subtitle: String
     val label: String
@@ -110,7 +111,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
         }
         Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { vm.transport("Previous") }) { Icon(Icons.Filled.SkipPrevious, "Previous", tint = C.Text) }
-            PlayButton(playing, st.playPending, 60.dp) { vm.togglePlay() }
+            PlayButton(playing, st.playPending, 60.dp) { playPressed(ctx, st, vm, playing) }
             IconButton(onClick = { vm.transport("Next") }) { Icon(Icons.Filled.SkipNext, "Next", tint = C.Text) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
