@@ -205,8 +205,7 @@ fun MiniPlayer(st: StereoState, title: String, onOpen: () -> Unit, vm: StereoVie
         TextButton(onClick = { vm.volumeStep(-1) }) { Text("−", color = C.Text, fontSize = 20.sp) }
         TextButton(onClick = { vm.volumeStep(1) }) { Text("+", color = C.Text, fontSize = 20.sp) }
         val playing = st.transport == "PLAYING" || st.playback.spotifyPlaying
-        CircleIconButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play",
-            { vm.togglePlay() }, filled = true, size = 44.dp)
+        PlayButton(playing, st.playPending, 44.dp) { vm.togglePlay() }
     }
 }
 
@@ -341,5 +340,16 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
     OutlinedButton(onClick = onClick, modifier = modifier.height(48.dp), shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, C.Line2), colors = ButtonDefaults.outlinedButtonColors(containerColor = C.Surface, contentColor = C.Text)) {
         Text(text, fontSize = 14.sp)
+    }
+}
+
+
+/** Play/pause button; a thin spinning ring shows while the stereo confirms the change. */
+@Composable
+fun PlayButton(playing: Boolean, pending: Boolean, size: Dp, onClick: () -> Unit) {
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size + 8.dp)) {
+        if (pending) CircularProgressIndicator(Modifier.size(size + 8.dp), color = C.Accent, strokeWidth = 2.5.dp)
+        CircleIconButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play",
+            onClick, filled = true, size = size)
     }
 }

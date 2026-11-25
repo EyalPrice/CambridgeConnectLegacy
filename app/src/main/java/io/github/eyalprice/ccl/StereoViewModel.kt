@@ -52,6 +52,8 @@ data class StereoState(
     val brightness: Int = 2,
     /** Input numbers shown on the home-screen widget (user's choice; Radio, Spotify, TV by default). */
     val widgetInputs: List<Int> = listOf(0, 24, 6),
+    /** True between pressing play/pause and the stereo confirming it (the button shows a spinner). */
+    val playPending: Boolean = false,
 ) {
     val sourceName: String
         get() = inputs.firstOrNull { it.number == sourceNumber }?.name ?: Reciva.defaultInputName(sourceNumber)
@@ -83,6 +85,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     /** True while the lock-screen service runs; polling then continues slowly in the background. */
     @Volatile var serviceActive = false
     private var lastVolumeTouch = 0L
+    /** Until this time, polling doesn't overwrite the play/pause state the user just chose. */
+    @Volatile private var playHoldUntil = 0L
     private var pendingVolume: Int? = null
     private var volumeJob: Job? = null
 
@@ -330,10 +334,13 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 dur = it["Duration"]?.toIntOrNull() ?: 0
             }
         }
+        val hold = System.currentTimeMillis() < playHoldUntil
         _state.update {
             it.copy(conn = Conn.OK, power = power, sourceNumber = src,
                 volume = vol ?: it.volume, muted = mute == "1" || mute.equals("true", true),
-                transport = transport, playback = pb, spotifyPos = pos, spotifyDur = dur)
+                transport = if (hold) it.transport else transport,
+                playback = if (hold) pb.copy(state = it.playback.state, spotifyPlaying = it.playback.spotifyPlaying) else pb,
+                spotifyPos = pos, spotifyDur = dur)
         }
         true
     }
@@ -456,24 +463,49 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
      * restart a stopped radio station, its preset is played again.
      */
     fun togglePlay() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val st = _state.value
-            if (isPlaying(st)) {
-                callBlocking("Pause")
-                delay(1500); refreshOnce()
-                if (isPlaying()) { callBlocking("Stop"); delay(800) }
-            } else {
-                val preset = st.presets.firstOrNull { it.title.isNotBlank() && it.title == st.playback.title }
-                callBlocking("Play", "Speed" to "1")
-                delay(1500); refreshOnce()
-                if (!isPlaying() && st.isRadio) {
-                    if (preset != null) callBlocking("PlayPreset", "NewPresetNumberValue" to preset.number.toString())
-                    else callBlocking("Play", "Speed" to "1")
-                    delay(800)
-                }
-            }
-            refreshOnce()
+        val st = _state.value
+        val wasPlaying = isPlaying(st)
+        // Show the new state straight away; the stereo confirms a moment later.
+        playHoldUntil = System.currentTimeMillis() + 6000
+        _state.update {
+            it.copy(playPending = true,
+                transport = if (wasPlaying) "PAUSED_PLAYBACK" else "PLAYING",
+                playback = it.playback.copy(state = if (wasPlaying) "Paused" else "Playing", spotifyPlaying = !wasPlaying))
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (wasPlaying) {
+                    callBlocking("Pause")
+                    if (confirmed(false)) return@launch
+                    callBlocking("Stop")
+                    confirmed(false)
+                } else {
+                    val preset = st.presets.firstOrNull { it.title.isNotBlank() && it.title == st.playback.title }
+                    callBlocking("Play", "Speed" to "1")
+                    if (confirmed(true)) return@launch
+                    if (st.isRadio && preset != null) callBlocking("PlayPreset", "NewPresetNumberValue" to preset.number.toString())
+                    confirmed(true)
+                }
+            } finally {
+                playHoldUntil = 0
+                _state.update { it.copy(playPending = false) }
+                refreshOnce()
+            }
+        }
+    }
+
+    /** Polls quickly (up to ~2 s) until the stereo reports the wanted play state. */
+    private suspend fun confirmed(wantPlaying: Boolean): Boolean {
+        repeat(5) {
+            delay(400)
+            val transport = out("GetTransportInfo") ?: ""
+            val pb = Reciva.playback(out("GetPlaybackDetails"))
+            val st = _state.value
+            val playing = transport == "PLAYING" || (st.isSpotify && pb.spotifyPlaying) ||
+                (!st.isSpotify && pb.state.equals("Playing", true))
+            if (playing == wantPlaying) return true
+        }
+        return false
     }
 
     fun setWidgetInput(slot: Int, number: Int) {

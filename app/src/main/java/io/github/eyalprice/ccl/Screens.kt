@@ -109,8 +109,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
         }
         Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { vm.transport("Previous") }) { Icon(Icons.Filled.SkipPrevious, "Previous", tint = C.Text) }
-            CircleIconButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play",
-                { vm.togglePlay() }, filled = true, size = 60.dp)
+            PlayButton(playing, st.playPending, 60.dp) { vm.togglePlay() }
             IconButton(onClick = { vm.transport("Next") }) { Icon(Icons.Filled.SkipNext, "Next", tint = C.Text) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
