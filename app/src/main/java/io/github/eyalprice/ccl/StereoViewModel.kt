@@ -401,12 +401,19 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
      * the usual save command for certain slots, so if the slot didn't change, the station is
      * stored directly by its station id instead.
      */
-    private suspend fun savePlayingTo(n: Int, title: String): Boolean {
+    private suspend fun savePlayingTo(n: Int, title0: String): Boolean {
+        val title = title0.ifBlank { _state.value.playback.title }
         val before = presetTitle(n)
+        log("Save check: slot $n before='${before ?: ""}', playing='$title'")
+        // Success = the slot now holds the station that is playing. If the name of what's playing
+        // can't be read, any station in the slot counts (it may already have been the same one).
         fun saved(): Boolean {
             val now = presetTitle(n)
-            return if (title.isNotBlank()) matches(now, title) else (!now.isNullOrBlank() && now != before)
+            val ok = if (title.isNotBlank()) matches(now, title) else !now.isNullOrBlank()
+            log("Save check: slot $n now='${now ?: ""}' → ${if (ok) "saved" else "not saved"}")
+            return ok
         }
+        if (title.isNotBlank() && matches(before, title)) return true // already there
         ensureNavigator()
         callBlocking("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString(), timeoutMs = 20000)
         delay(800)
