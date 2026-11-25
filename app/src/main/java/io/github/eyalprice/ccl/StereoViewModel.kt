@@ -58,6 +58,14 @@ data class StereoState(
     val lastPreset: Int = 0,
     /** True from tapping a preset (or next/back on radio) until the stereo reports the new station. */
     val tuning: Boolean = false,
+    /** Controls waiting for the stereo to confirm a change (each shows a spinner): bass, treble, balance, mute, phase, brightness, language, input. */
+    val busy: Set<String> = emptySet(),
+    /** True when this stereo's top volume is certain (it reported it, or it refused a higher one). */
+    val volumeHard: Boolean = false,
+    /** Learned limits for this stereo; null = not learned yet (no limit). Balance limits are in balance steps. */
+    val bassMin: Int? = null, val bassMax: Int? = null,
+    val trebleMin: Int? = null, val trebleMax: Int? = null,
+    val balanceMin: Int? = null, val balanceMax: Int? = null,
 ) {
     /** The preset now playing: the slot last started if its name still matches, otherwise the first slot with that name. */
     val playingPreset: Reciva.Preset?
@@ -78,7 +86,6 @@ data class StereoState(
 
 /** Holds the connection to one stereo and keeps its state fresh by polling. */
 private const val BALANCE_UNIT = 16
-private const val BALANCE_STEPS = 16
 
 class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -96,6 +103,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     /** True while the lock-screen service runs; polling then continues slowly in the background. */
     @Volatile var serviceActive = false
     private var lastVolumeTouch = 0L
+    /** Prefix for limits saved for the connected stereo (by its serial number). */
+    @Volatile private var stereoKey = "lim_unknown_"
     /** Until this time, polling doesn't overwrite the play/pause state the user just chose. */
     @Volatile private var playHoldUntil = 0L
     private var pendingVolume: Int? = null
@@ -234,6 +243,21 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     private fun out(action: String, vararg args: Pair<String, String>): String? =
         callBlocking(action, *args)?.takeIf { it.ok() }?.out?.values?.firstOrNull()
 
+    /** Like [send], but marks [key] busy (its control shows a spinner) until the stereo has answered and been re-read. */
+    fun sendBusy(key: String, action: String, vararg args: Pair<String, String>, after: (() -> Unit)? = null) {
+        _state.update { it.copy(busy = it.busy + key) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val r = callBlocking(action, *args)
+                if (r == null || !r.ok()) toast("The stereo didn't accept “$action”.")
+                after?.invoke()
+                refreshOnce()
+            } finally {
+                _state.update { it.copy(busy = it.busy - key) }
+            }
+        }
+    }
+
     fun send(action: String, vararg args: Pair<String, String>, after: (() -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val r = callBlocking(action, *args)
@@ -268,7 +292,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             val nm = out("GetAudioSourceName", "InAudioSource" to n.toString())
             Input(n, if (nm.isNullOrBlank() || nm == "(none)") Reciva.defaultInputName(n) else nm)
         }
-        val max = out("GetVolumeMax")?.toIntOrNull() ?: 40
+        val reportedMax = out("GetVolumeMax")?.toIntOrNull()?.takeIf { it > 0 }
         val about = linkedMapOf<String, String>()
         out("GetCurrentServicePack")?.let { about["Firmware"] = it }
         out("GetHardwareConfig")?.let { about["Hardware"] = it }
@@ -279,8 +303,16 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val names = langs?.get("RetLanguageListValue")?.split(',') ?: emptyList()
         val codes = langs?.get("RetIsoCodeListValue")?.split(',') ?: emptyList()
         val language = out("GetCurrentDisplayLanguage") ?: ""
+        // Limits are learned and saved per stereo (by serial number), never per model.
+        stereoKey = "lim_" + (about["Serial number"]?.takeIf { it.isNotBlank() }
+            ?: device?.let { d -> "${d.modelName}_${d.friendlyName}" } ?: "unknown").replace(Regex("[^A-Za-z0-9_]"), "_") + "_"
+        val max = reportedMax ?: limInt("volTop") ?: 40
+        val hard = reportedMax != null || prefs.getBoolean(stereoKey + "volHard", false)
         _state.update {
-            it.copy(inputs = ordered(inputs), volumeMax = max, about = about,
+            it.copy(inputs = ordered(inputs), volumeMax = max, volumeHard = hard, about = about,
+                bassMin = limInt("bassMin"), bassMax = limInt("bassMax"),
+                trebleMin = limInt("trebleMin"), trebleMax = limInt("trebleMax"),
+                balanceMin = limInt("balMin"), balanceMax = limInt("balMax"),
                 languages = names.zip(codes), language = language,
                 brightness = prefs.getInt("brightness", 2),
                 widgetInputs = (prefs.getString("widgetInputs", null) ?: "0,24,6").split(',')
@@ -304,7 +336,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 balance = out("GetBalanceDB")?.toIntOrNull()?.let { raw ->
                     // Stereo reports 1/256 dB units; show it as steps, preferring the app's own value when they agree.
                     val saved = prefs.getInt("balance", 0)
-                    val fromStereo = Math.round(raw.toFloat() / BALANCE_UNIT).coerceIn(-BALANCE_STEPS, BALANCE_STEPS)
+                    val fromStereo = Math.round(raw.toFloat() / BALANCE_UNIT)
                     if (Math.abs(saved * BALANCE_UNIT - raw) < 256) saved else fromStereo
                 },
                 phaseInverted = out("GetAudioPhaseInverted")?.let { v -> v == "1" || v.equals("true", true) },
@@ -335,6 +367,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val src = out("GetAudioSourceByNumber")?.toIntOrNull() ?: -1
         val volTouched = System.currentTimeMillis() - lastVolumeTouch < 2500
         val vol = if (volTouched) null else out("GetVolume")?.toIntOrNull()
+        if (vol != null && vol > _state.value.volumeMax) learnVolumeTop(vol, hard = false)
         val mute = out("GetMute")
         val transport = out("GetTransportInfo") ?: ""
         val pb = Reciva.playback(out("GetPlaybackDetails"))
@@ -369,29 +402,59 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------ controls
 
-    fun setVolume(v: Int) {
-        val target = v.coerceIn(0, _state.value.volumeMax)
-        if (target == _state.value.volume && pendingVolume == null) return
+    /**
+     * Sets the volume. The wheel stops at the known top. When the top isn't certain, the + button
+     * (and the phone's volume keys) may go above it one step at a time: if the stereo accepts the
+     * new volume it becomes the top; if it answers with less, that is the stereo's real limit.
+     */
+    fun setVolume(v: Int, allowAbove: Boolean = false) {
+        val st = _state.value
+        val upper = if (allowAbove && !st.volumeHard) st.volumeMax + 1 else st.volumeMax
+        val target = v.coerceIn(0, upper)
+        if (target == st.volume && pendingVolume == null) return
         lastVolumeTouch = System.currentTimeMillis()
-        _state.update { it.copy(volume = target) }
+        _state.update { it.copy(volume = target, volumeMax = maxOf(it.volumeMax, target)) }
         pendingVolume = target
         if (volumeJob?.isActive == true) return
         volumeJob = viewModelScope.launch(Dispatchers.IO) {
+            var last = target
             while (true) {
                 val t = pendingVolume ?: break
                 pendingVolume = null
+                last = t
                 callBlocking("SetVolume", "DesiredVolume" to t.toString())
                 lastVolumeTouch = System.currentTimeMillis()
+            }
+            if (_state.value.volumeHard) return@launch
+            // Check what the stereo really set (twice, so a slow stereo isn't mistaken for a limit).
+            delay(700)
+            if (pendingVolume != null) return@launch
+            val r1 = out("GetVolume")?.toIntOrNull() ?: return@launch
+            if (r1 >= last) { if (r1 > _state.value.volumeMax || !_state.value.volumeHard) learnVolumeTop(maxOf(r1, _state.value.volumeMax), hard = false); return@launch }
+            delay(700)
+            if (pendingVolume != null) return@launch
+            val r2 = out("GetVolume")?.toIntOrNull() ?: return@launch
+            if (r2 == r1 && r2 < last) {
+                learnVolumeTop(r2, hard = true)
+                _state.update { it.copy(volume = r2) }
             }
         }
     }
 
-    fun volumeStep(d: Int) = setVolume(_state.value.volume + d)
+    fun volumeStep(d: Int) = setVolume(_state.value.volume + d, allowAbove = d > 0)
+
+    private fun learnVolumeTop(top: Int, hard: Boolean) {
+        if (top <= 0) return
+        val e = prefs.edit().putInt(stereoKey + "volTop", top)
+        if (hard) e.putBoolean(stereoKey + "volHard", true)
+        e.apply()
+        _state.update { it.copy(volumeMax = top, volumeHard = it.volumeHard || hard) }
+    }
 
     fun toggleMute() {
         val m = !_state.value.muted
         _state.update { it.copy(muted = m) }
-        send("SetMute", "DesiredMute" to if (m) "1" else "0")
+        sendBusy("mute", "SetMute", "DesiredMute" to if (m) "1" else "0")
     }
 
     fun power(target: String) {
@@ -404,7 +467,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun selectInput(n: Int) {
         _state.update { it.copy(sourceNumber = n) }
         if (_state.value.standby) callAsync { callBlocking("SetPowerState", "NewPowerStateValue" to "ON") }
-        send("SetAudioSourceByNumber", "NewAudioSourceValue" to n.toString())
+        sendBusy("input", "SetAudioSourceByNumber", "NewAudioSourceValue" to n.toString())
     }
 
     fun renameInput(n: Int, name: String) =
@@ -602,11 +665,42 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(widgetInputs = list) }
     }
 
+    private val latestRequest = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /** Bass or treble. Stops at this stereo's learned limits; with none learned yet, any value is tried. */
     fun setTone(which: String, value: Int) {
-        if (which == "bass") _state.update { it.copy(bass = value) } else _state.update { it.copy(treble = value) }
+        val st = _state.value
+        val lo = if (which == "bass") st.bassMin else st.trebleMin
+        val hi = if (which == "bass") st.bassMax else st.trebleMax
+        val v = value.coerceIn(lo ?: Int.MIN_VALUE, hi ?: Int.MAX_VALUE)
+        if (which == "bass") _state.update { it.copy(bass = v) } else _state.update { it.copy(treble = v) }
+        latestRequest[which] = v
         val action = if (which == "bass") "SetToneCtrlBass" else "SetToneCtrlTreble"
         val arg = if (which == "bass") "NewToneCtrlBassValue" else "NewToneCtrlTrebleValue"
-        send(action, arg to value.toString()) { loadSound() }
+        sendBusy(which, action, arg to v.toString()) {
+            loadSound()
+            if (latestRequest[which] != v) return@sendBusy   // a newer press is on its way; judge that one instead
+            val got = (if (which == "bass") _state.value.bass else _state.value.treble) ?: return@sendBusy
+            val key = if (which == "bass") "bass" else "treble"
+            when {
+                v > got -> saveLimit(key + "Max", got)   // asked for more, stereo stopped lower: that's its top
+                v < got -> saveLimit(key + "Min", got)   // asked for less, stereo stopped higher: that's its bottom
+            }
+        }
+    }
+
+    private fun limInt(name: String): Int? = if (prefs.contains(stereoKey + name)) prefs.getInt(stereoKey + name, 0) else null
+
+    private fun saveLimit(name: String, v: Int) {
+        prefs.edit().putInt(stereoKey + name, v).apply()
+        _state.update {
+            when (name) {
+                "bassMax" -> it.copy(bassMax = v); "bassMin" -> it.copy(bassMin = v)
+                "trebleMax" -> it.copy(trebleMax = v); "trebleMin" -> it.copy(trebleMin = v)
+                "balMax" -> it.copy(balanceMax = v); "balMin" -> it.copy(balanceMin = v)
+                else -> it
+            }
+        }
     }
 
     /**
@@ -615,8 +709,9 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
      * its own value instead of reading it back after each press.
      */
     fun balanceStep(dir: Int) {
-        val cur = _state.value.balance ?: 0
-        val next = (cur + dir).coerceIn(-BALANCE_STEPS, BALANCE_STEPS)
+        val st = _state.value
+        val cur = st.balance ?: 0
+        val next = (cur + dir).coerceIn(st.balanceMin ?: Int.MIN_VALUE, st.balanceMax ?: Int.MAX_VALUE)
         if (next == cur) return
         setBalance(next)
     }
@@ -624,7 +719,19 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun setBalance(steps: Int) {
         _state.update { it.copy(balance = steps) }
         prefs.edit().putInt("balance", steps).apply()
-        send("SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString())
+        latestRequest["balance"] = steps
+        sendBusy("balance", "SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString()) {
+            if (latestRequest["balance"] != steps || steps == 0) return@sendBusy
+            val raw = out("GetBalanceDB")?.toIntOrNull() ?: return@sendBusy
+            val want = steps * BALANCE_UNIT
+            // The stereo rounds what it reports to about 1 dB (256 units), so only a bigger gap means a limit.
+            if (Math.abs(want - raw) < 256) return@sendBusy
+            val at = Math.round(raw.toFloat() / BALANCE_UNIT)
+            if (steps > 0 && at < steps) saveLimit("balMax", at)
+            if (steps < 0 && at > steps) saveLimit("balMin", at)
+            prefs.edit().putInt("balance", at).apply()
+            _state.update { it.copy(balance = at) }
+        }
     }
 
     fun resetTone() {
@@ -635,7 +742,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setPhase(on: Boolean) {
         _state.update { it.copy(phaseInverted = on) }
-        send("SetAudioPhaseInverted", "NewAudioPhaseInverted" to if (on) "1" else "0") { loadSound() }
+        sendBusy("phase", "SetAudioPhaseInverted", "NewAudioPhaseInverted" to if (on) "1" else "0") { loadSound() }
     }
 
     fun setFilter(f: String) = send("SetAudioFilter", "NewAudioFilter" to f) { loadSound() }
@@ -643,10 +750,10 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun setBrightness(level: Int) {
         prefs.edit().putInt("brightness", level).apply()
         _state.update { it.copy(brightness = level) }
-        send("SetBrightnessLevel", "NewBrightnessLevel" to level.toString())
+        sendBusy("brightness", "SetBrightnessLevel", "NewBrightnessLevel" to level.toString())
     }
 
-    fun setLanguage(code: String) = send("SetCurrentDisplayLanguage", "NewIsoCodeValue" to code) {
+    fun setLanguage(code: String) = sendBusy("language", "SetCurrentDisplayLanguage", "NewIsoCodeValue" to code) {
         _state.update { s -> s.copy(language = s.languages.firstOrNull { it.second == code }?.first ?: s.language) }
     }
 

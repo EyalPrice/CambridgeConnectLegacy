@@ -186,7 +186,8 @@ fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
                     Spacer(Modifier.weight(1f))
                     if (inp.number in st.widgetInputs)
                         Icon(Icons.Outlined.Widgets, "On the home-screen widget", tint = C.Accent, modifier = Modifier.size(16.dp).padding(end = 2.dp))
-                    if (on) Text(" ACTIVE", color = C.Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
+                    if (on && "input" in st.busy) BusySpinner(Modifier.padding(start = 4.dp))
+                    else if (on) Text(" ACTIVE", color = C.Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
                 }
                 Column {
                     Text(inp.name, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -595,17 +596,23 @@ fun SoundScreen(st: StereoState, vm: StereoViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Panel(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
-                Stepper("Volume", "${st.volume}", { vm.volumeStep(-1) }, { vm.volumeStep(1) })
-                st.bass?.let { b -> Stepper("Bass", signed(b), { vm.setTone("bass", b - 1) }, { vm.setTone("bass", b + 1) }) }
-                st.treble?.let { t -> Stepper("Treble", signed(t), { vm.setTone("treble", t - 1) }, { vm.setTone("treble", t + 1) }) }
-                st.balance?.let { b -> Stepper("Balance", if (b == 0) "Centre" else if (b < 0) "L ${-b}" else "R $b", { vm.balanceStep(-1) }, { vm.balanceStep(1) }, minusLabel = "L", plusLabel = "R") }
-                if (st.balance != null) Text("Balance moves in small steps, up to 16 either side.", color = C.Muted, fontSize = 12.sp)
+                Stepper("Volume", "${st.volume}", { vm.volumeStep(-1) }, { vm.volumeStep(1) },
+                    minusEnabled = st.volume > 0, plusEnabled = !st.volumeHard || st.volume < st.volumeMax)
+                st.bass?.let { b -> Stepper("Bass", signed(b), { vm.setTone("bass", b - 1) }, { vm.setTone("bass", b + 1) },
+                    busy = "bass" in st.busy, minusEnabled = st.bassMin == null || b > st.bassMin, plusEnabled = st.bassMax == null || b < st.bassMax) }
+                st.treble?.let { t -> Stepper("Treble", signed(t), { vm.setTone("treble", t - 1) }, { vm.setTone("treble", t + 1) },
+                    busy = "treble" in st.busy, minusEnabled = st.trebleMin == null || t > st.trebleMin, plusEnabled = st.trebleMax == null || t < st.trebleMax) }
+                st.balance?.let { b -> Stepper("Balance", if (b == 0) "Centre" else if (b < 0) "L ${-b}" else "R $b", { vm.balanceStep(-1) }, { vm.balanceStep(1) },
+                    minusLabel = "L", plusLabel = "R", busy = "balance" in st.busy,
+                    minusEnabled = st.balanceMin == null || b > st.balanceMin, plusEnabled = st.balanceMax == null || b < st.balanceMax) }
+                Text("The app learns this stereo's limits the first time it stops short, then greys out the button at that limit.",
+                    color = C.Muted, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(12.dp))
         Panel(Modifier.fillMaxWidth()) {
-            SwitchRow("Mute", null, st.muted) { vm.toggleMute() }
-            st.phaseInverted?.let { p -> SwitchRow("Invert phase", "Absolute polarity", p) { vm.setPhase(it) } }
+            SwitchRow("Mute", null, st.muted, busy = "mute" in st.busy) { vm.toggleMute() }
+            st.phaseInverted?.let { p -> SwitchRow("Invert phase", "Absolute polarity", p, busy = "phase" in st.busy) { vm.setPhase(it) } }
         }
         st.filter?.let { f ->
             SectionLabel("Digital filter")
@@ -643,11 +650,14 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         Panel(Modifier.fillMaxWidth()) {
             RowItem("Stereo name", st.name)
             Column(Modifier.padding(14.dp)) {
-                Text("Stereo display brightness", color = C.Text, fontSize = 14.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Stereo display brightness", color = C.Text, fontSize = 14.sp)
+                    if ("brightness" in st.busy) BusySpinner(Modifier.padding(start = 8.dp))
+                }
                 Spacer(Modifier.height(8.dp))
                 Segmented(listOf("Low", "Medium", "High"), st.brightness, { vm.setBrightness(it) })
             }
-            if (st.languages.isNotEmpty()) RowItem("Stereo display language", st.language) { langDialog = true }
+            if (st.languages.isNotEmpty()) RowItem("Stereo display language", if ("language" in st.busy) "Changing…" else st.language) { langDialog = true }
         }
         SectionLabel("About this stereo")
         Panel(Modifier.fillMaxWidth()) {

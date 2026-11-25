@@ -282,23 +282,30 @@ fun VolumeKnob(value: Int, max: Int, muted: Boolean, onChange: (Int) -> Unit, mo
 
 @Composable
 fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit, enabled: Boolean = true,
-            minusLabel: String = "−", plusLabel: String = "+") {
+            minusLabel: String = "−", plusLabel: String = "+", busy: Boolean = false,
+            minusEnabled: Boolean = true, plusEnabled: Boolean = true) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = onMinus, enabled = enabled, border = BorderStroke(1.dp, C.Line2),
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            if (busy) BusySpinner(Modifier.padding(start = 8.dp))
+        }
+        OutlinedButton(onClick = onMinus, enabled = enabled && minusEnabled, border = BorderStroke(1.dp, C.Line2),
             modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text(minusLabel, color = C.Text, fontSize = if (minusLabel.length > 1) 14.sp else 20.sp, fontWeight = FontWeight.SemiBold) }
         Text(value, color = C.Accent, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.width(72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        OutlinedButton(onClick = onPlus, enabled = enabled, border = BorderStroke(1.dp, C.Line2),
+        OutlinedButton(onClick = onPlus, enabled = enabled && plusEnabled, border = BorderStroke(1.dp, C.Line2),
             modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text(plusLabel, color = C.Text, fontSize = if (plusLabel.length > 1) 14.sp else 20.sp, fontWeight = FontWeight.SemiBold) }
     }
 }
 
 @Composable
-fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+fun SwitchRow(title: String, subtitle: String?, checked: Boolean, busy: Boolean = false, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                if (busy) BusySpinner(Modifier.padding(start = 8.dp))
+            }
             if (subtitle != null) Text(subtitle, color = C.Muted, fontSize = 12.sp)
         }
         Switch(checked = checked, onCheckedChange = onChange,
@@ -389,3 +396,9 @@ fun playPressed(ctx: android.content.Context, st: StereoState, vm: StereoViewMod
     }
     vm.togglePlay()
 }
+
+
+/** Small amber spinner shown next to a control while the stereo confirms a change. */
+@Composable
+fun BusySpinner(modifier: Modifier = Modifier) =
+    CircularProgressIndicator(modifier.size(14.dp), color = C.Accent, strokeWidth = 1.8.dp)

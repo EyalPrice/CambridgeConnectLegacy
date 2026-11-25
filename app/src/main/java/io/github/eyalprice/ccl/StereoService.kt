@@ -107,7 +107,7 @@ class StereoService : Service() {
 
     private fun update(st: StereoState) {
         if (st.conn == Conn.OK && st.standby) { stopSelf(); return }
-        volume.currentVolume = st.volume
+        volume.currentVolume = st.volume.coerceAtMost(volume.maxVolume)
         val (title, sub) = titles(st)
         val playing = isPlaying(st)
         val url = if (st.hasMetadata) st.playback.artUrl else ""
