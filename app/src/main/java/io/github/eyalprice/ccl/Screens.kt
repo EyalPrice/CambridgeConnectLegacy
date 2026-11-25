@@ -64,7 +64,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
         st.hasMetadata -> {
             title = pb.title.ifBlank { st.sourceName }
             subtitle = pb.format.ifBlank { st.sourceName }
-            val preset = st.presets.firstOrNull { it.title.isNotBlank() && it.title == pb.title }
+            val preset = st.playingPreset
             label = if (preset != null) "PRESET ${preset.number}" else st.sourceName.uppercase()
         }
         else -> {
@@ -213,7 +213,7 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
     LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
         items((1..count).toList()) { n ->
             val p = st.presets.firstOrNull { it.number == n }
-            val on = p != null && st.isRadio && p.title == st.playback.title
+            val on = p != null && st.playingPreset?.number == n
             Row(
                 Modifier.fillMaxWidth().height(60.dp).clip(RoundedCornerShape(12.dp)).background(if (on) C.AccentBg else Color.Transparent)
                     .combinedClickable(onClick = { if (p != null) { vm.playPreset(n); onPlaying() } else options = n },

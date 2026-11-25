@@ -54,7 +54,16 @@ data class StereoState(
     val widgetInputs: List<Int> = listOf(0, 24, 6),
     /** True between pressing play/pause and the stereo confirming it (the button shows a spinner). */
     val playPending: Boolean = false,
+    /** Slot the app last started (tap, next or back). Used to tell apart slots holding the same station. */
+    val lastPreset: Int = 0,
 ) {
+    /** The preset now playing: the slot last started if its name still matches, otherwise the first slot with that name. */
+    val playingPreset: Reciva.Preset?
+        get() {
+            if (!isRadio || playback.title.isBlank()) return null
+            val same = presets.filter { it.title.isNotBlank() && it.title.equals(playback.title, true) }
+            return same.firstOrNull { it.number == lastPreset } ?: same.firstOrNull()
+        }
     val sourceName: String
         get() = inputs.firstOrNull { it.number == sourceNumber }?.name ?: Reciva.defaultInputName(sourceNumber)
     val isRadio get() = sourceNumber == 0
@@ -402,6 +411,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     /** Plays a preset and remembers its slot, so next/back continue from the right place even when two slots hold the same station. */
     fun playPreset(n: Int) {
         lastStepPreset = n
+        _state.update { it.copy(lastPreset = n) }
         send("PlayPreset", "NewPresetNumberValue" to n.toString())
     }
 
