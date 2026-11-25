@@ -536,6 +536,60 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playStation(id: String) = send("SetStationId", "NewStationIdValue" to id)
 
+    private fun presetTitle(n: Int): String? {
+        loadPresets()
+        return _state.value.presets.firstOrNull { it.number == n }?.title
+    }
+
+    private fun matches(a: String?, b: String): Boolean {
+        if (a.isNullOrBlank()) return false
+        val x = a.lowercase().filter { it.isLetterOrDigit() }
+        val y = b.lowercase().filter { it.isLetterOrDigit() }
+        return x.isNotEmpty() && y.isNotEmpty() && (x.contains(y) || y.contains(x))
+    }
+
+    /**
+     * Saves a search result into a preset slot. First tries to store it directly by its station id;
+     * if that doesn't stick, plays the station, waits until it is really playing and saves that.
+     * The slot is read back afterwards so the user is told whether it worked.
+     */
+    fun saveStationToSlot(station: Reciva.Station, n: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            toast("Saving “${station.name}” to preset $n…")
+            val before = presetTitle(n)
+            for (menuId in listOf("0", "")) {
+                val r = callBlocking("SetPreset", "NewPresetNumberValue" to n.toString(),
+                    "NewPresetStationIdValue" to station.id, "NewPresetMenuIdValue" to menuId, timeoutMs = 20000)
+                if (r != null && r.ok()) {
+                    val now = presetTitle(n)
+                    if (matches(now, station.name) || (now != null && now != before && now.isNotBlank())) {
+                        toast("Saved “${now}” to preset $n.")
+                        return@launch
+                    }
+                }
+            }
+            // Fall back: play it, wait for it to start, then save what is playing.
+            callBlocking("SetStationId", "NewStationIdValue" to station.id, timeoutMs = 20000)
+            var playing = false
+            for (i in 0 until 25) {
+                delay(1000)
+                val pb = Reciva.playback(out("GetPlaybackDetails"))
+                if (pb.state.equals("Playing", true) && matches(pb.title, station.name)) { playing = true; break }
+            }
+            if (!playing) {
+                toast("“${station.name}” didn't start playing, so it wasn't saved. Try Play first, then save it from Presets.")
+                return@launch
+            }
+            ensureNavigator()
+            callBlocking("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString(), timeoutMs = 20000)
+            delay(1000)
+            val now = presetTitle(n)
+            if (matches(now, station.name)) toast("Saved “${now}” to preset $n.")
+            else toast("The stereo didn't save “${station.name}” to preset $n. Please share the debug log (Pro › Troubleshooting).")
+            refreshOnce()
+        }
+    }
+
     suspend fun queue(): List<Reciva.Track> = withContext(Dispatchers.IO) {
         Reciva.tracks(out("GetPlaylistTrackDetails", "StartTrackID" to "0", "TrackCount" to "100"))
     }

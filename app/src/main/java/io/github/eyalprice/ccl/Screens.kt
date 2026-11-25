@@ -345,8 +345,7 @@ private fun StationSearch(st: StereoState, vm: StereoViewModel, onPlaying: () ->
     saveFor?.let { s ->
         SlotPicker(st, "Save “${s.name}”", onPick = { n ->
             saveFor = null
-            vm.playStation(s.id)
-            scope.launch { delay(4000); vm.saveCurrentAsPreset(n) }
+            vm.saveStationToSlot(s, n)
         }, onDismiss = { saveFor = null })
     }
 }
