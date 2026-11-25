@@ -133,18 +133,23 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
 @Composable
 fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
     var rename by remember { mutableStateOf<Input?>(null) }
+    var menuFor by remember { mutableStateOf<Input?>(null) }
+    var replaceFor by remember { mutableStateOf<Input?>(null) }
     if (st.inputs.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Reading inputs…", color = C.Muted) }
         return
     }
     LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(20.dp, 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(st.inputs) { inp ->
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+            Text("Long-press a tile for options: rename, move, or add to the widget.", color = C.Muted, fontSize = 13.sp)
+        }
+        items(st.inputs, key = { it.number }) { inp ->
             val on = inp.number == st.sourceNumber
             Column(
                 Modifier.height(112.dp).clip(RoundedCornerShape(18.dp)).background(if (on) C.AccentBg else C.Surface)
                     .border(if (on) 1.5.dp else 1.dp, if (on) C.Accent else C.Line, RoundedCornerShape(18.dp))
-                    .combinedClickable(onClick = { vm.selectInput(inp.number); onPicked() }, onLongClick = { rename = inp })
+                    .combinedClickable(onClick = { vm.selectInput(inp.number); onPicked() }, onLongClick = { menuFor = inp })
                     .padding(14.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -154,7 +159,9 @@ fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
                         Icon(inputIcon(inp), null, tint = if (on) C.Bg else C.Text, modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.weight(1f))
-                    if (on) Text("ACTIVE", color = C.Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
+                    if (inp.number in st.widgetInputs)
+                        Icon(Icons.Outlined.Widgets, "On the home-screen widget", tint = C.Accent, modifier = Modifier.size(16.dp).padding(end = 2.dp))
+                    if (on) Text(" ACTIVE", color = C.Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
                 }
                 Column {
                     Text(inp.name, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -163,9 +170,40 @@ fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
             }
         }
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
-            Text("Long-press a tile to rename it. Names are saved on the stereo.", color = C.Muted, fontSize = 13.sp,
-                modifier = Modifier.padding(top = 6.dp))
+            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Widgets, null, tint = C.Accent, modifier = Modifier.size(14.dp))
+                Text("  = on the home-screen widget (up to $MAX_WIDGET).", color = C.Muted, fontSize = 12.sp)
+            }
         }
+    }
+    menuFor?.let { inp ->
+        val idx = st.inputs.indexOfFirst { it.number == inp.number }
+        val onWidget = inp.number in st.widgetInputs
+        AlertDialog(onDismissRequest = { menuFor = null }, title = { Text(inp.name) },
+            text = {
+                Column {
+                    MenuLine(Icons.Outlined.Edit, "Rename") { menuFor = null; rename = inp }
+                    MenuLine(Icons.Filled.ArrowUpward, "Move up", enabled = idx > 0) { vm.moveInput(inp.number, -1) }
+                    MenuLine(Icons.Filled.ArrowDownward, "Move down", enabled = idx in 0 until st.inputs.size - 1) { vm.moveInput(inp.number, 1) }
+                    if (onWidget) MenuLine(Icons.Outlined.Widgets, "Remove from widget") { vm.removeFromWidget(inp.number); menuFor = null }
+                    else MenuLine(Icons.Outlined.Widgets, "Add to widget") {
+                        menuFor = null
+                        if (st.widgetInputs.size >= MAX_WIDGET) replaceFor = inp else vm.addToWidget(inp.number)
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Close") } })
+    }
+    replaceFor?.let { inp ->
+        AlertDialog(onDismissRequest = { replaceFor = null }, title = { Text("Widget is full") },
+            text = {
+                Column {
+                    Text("The widget has $MAX_WIDGET buttons. Which one should “${inp.name}” replace?", color = C.Muted,
+                        modifier = Modifier.padding(bottom = 8.dp))
+                    st.inputs.filter { it.number in st.widgetInputs }.forEach { w ->
+                        MenuLine(Icons.Outlined.SwapHoriz, w.name) { vm.addToWidget(inp.number, replace = w.number); replaceFor = null }
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { replaceFor = null }) { Text("Cancel") } })
     }
     rename?.let { inp ->
         var name by remember(inp) { mutableStateOf(inp.name) }
@@ -173,6 +211,16 @@ fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
             text = { OutlinedTextField(name, { name = it }, singleLine = true) },
             confirmButton = { TextButton(onClick = { vm.renameInput(inp.number, name.trim()); rename = null }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun MenuLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val col = if (enabled) C.Text else C.Muted.copy(alpha = 0.5f)
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(enabled = enabled, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = if (enabled) C.Accent else col, modifier = Modifier.size(20.dp))
+        Text(text, color = col, fontSize = 15.sp, modifier = Modifier.padding(start = 14.dp))
     }
 }
 
@@ -555,7 +603,6 @@ private fun signed(v: Int) = if (v > 0) "+$v" else "$v"
 fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update: String?, onCheckUpdate: () -> Unit) {
     val ctx = LocalContext.current
     var langDialog by remember { mutableStateOf(false) }
-    var widgetPick by remember { mutableStateOf<Int?>(null) }
     fun open(url: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     fun issue(kind: String) {
         val body = "**App:** $version\n**Android:** ${Build.VERSION.RELEASE} (${Build.MANUFACTURER} ${Build.MODEL})\n" +
@@ -576,18 +623,6 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
                 Segmented(listOf("Low", "Medium", "High"), st.brightness, { vm.setBrightness(it) })
             }
             if (st.languages.isNotEmpty()) RowItem("Stereo display language", st.language) { langDialog = true }
-        }
-        if (st.inputs.isNotEmpty()) {
-            SectionLabel("Home-screen widget")
-            Panel(Modifier.fillMaxWidth()) {
-                Text("Choose the three input buttons on the widget.", color = C.Muted, fontSize = 12.sp,
-                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp))
-                (0..2).forEach { slot ->
-                    val num = st.widgetInputs.getOrNull(slot)
-                    val name = st.inputs.firstOrNull { it.number == num }?.name ?: "Not set"
-                    RowItem("Button ${slot + 1}", name) { widgetPick = slot }
-                }
-            }
         }
         SectionLabel("About this stereo")
         Panel(Modifier.fillMaxWidth()) {
@@ -632,17 +667,6 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
             }
         }
         Text("Unofficial app. Not affiliated with Cambridge Audio.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 14.dp))
-    }
-    widgetPick?.let { slot ->
-        AlertDialog(onDismissRequest = { widgetPick = null }, title = { Text("Widget button ${slot + 1}") },
-            text = {
-                LazyColumn(Modifier.heightIn(max = 380.dp)) {
-                    items(st.inputs) { inp ->
-                        Text(inp.name, color = if (st.widgetInputs.getOrNull(slot) == inp.number) C.Accent else C.Text,
-                            modifier = Modifier.fillMaxWidth().clickable { vm.setWidgetInput(slot, inp.number); widgetPick = null }.padding(vertical = 12.dp))
-                    }
-                }
-            }, confirmButton = { TextButton(onClick = { widgetPick = null }) { Text("Close") } })
     }
     if (langDialog) AlertDialog(onDismissRequest = { langDialog = false }, title = { Text("Stereo display language") },
         text = {

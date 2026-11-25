@@ -278,10 +278,11 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val codes = langs?.get("RetIsoCodeListValue")?.split(',') ?: emptyList()
         val language = out("GetCurrentDisplayLanguage") ?: ""
         _state.update {
-            it.copy(inputs = inputs, volumeMax = max, about = about,
+            it.copy(inputs = ordered(inputs), volumeMax = max, about = about,
                 languages = names.zip(codes), language = language,
                 brightness = prefs.getInt("brightness", 2),
-                widgetInputs = (prefs.getString("widgetInputs", null) ?: "0,24,6").split(',').mapNotNull { n -> n.trim().toIntOrNull() })
+                widgetInputs = (prefs.getString("widgetInputs", null) ?: "0,24,6").split(',')
+                    .mapNotNull { n -> n.trim().toIntOrNull() }.filter { n -> n >= 0 }.distinct().take(MAX_WIDGET))
         }
         loadPresets()
         loadSound()
@@ -560,10 +561,37 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         return false
     }
 
-    fun setWidgetInput(slot: Int, number: Int) {
-        val list = _state.value.widgetInputs.toMutableList()
-        while (list.size < 3) list.add(-1)
-        list[slot] = number
+    // ------------------------------------------------------------ input order and widget buttons (saved on the phone)
+
+    /** Applies the user's saved tile order; inputs not in it keep the stereo's order at the end. */
+    private fun ordered(inputs: List<Input>): List<Input> {
+        val order = (prefs.getString("inputOrder", null) ?: "").split(',').mapNotNull { it.trim().toIntOrNull() }
+        val known = order.mapNotNull { n -> inputs.firstOrNull { it.number == n } }
+        return known + inputs.filter { it !in known }
+    }
+
+    /** Moves a tile one place earlier (dir = -1) or later (dir = +1) and saves the order. */
+    fun moveInput(number: Int, dir: Int) {
+        val list = _state.value.inputs.toMutableList()
+        val i = list.indexOfFirst { it.number == number }
+        val j = i + dir
+        if (i < 0 || j !in list.indices) return
+        java.util.Collections.swap(list, i, j)
+        prefs.edit().putString("inputOrder", list.joinToString(",") { it.number.toString() }).apply()
+        _state.update { it.copy(inputs = list) }
+    }
+
+    /** Adds an input to the widget; when it already has [MAX_WIDGET] buttons, [replace] says which one to take off. */
+    fun addToWidget(number: Int, replace: Int? = null) {
+        val list = _state.value.widgetInputs.filter { it != replace && it != number }.toMutableList()
+        if (list.size >= MAX_WIDGET) return
+        list.add(number)
+        saveWidget(list)
+    }
+
+    fun removeFromWidget(number: Int) = saveWidget(_state.value.widgetInputs.filter { it != number })
+
+    private fun saveWidget(list: List<Int>) {
         prefs.edit().putString("widgetInputs", list.joinToString(",")).apply()
         _state.update { it.copy(widgetInputs = list) }
     }
@@ -806,3 +834,6 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 }
+
+/** Most input buttons the home-screen widget shows. */
+const val MAX_WIDGET = 4

@@ -12,7 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-/** Home-screen widget: now playing, play/pause, volume, three inputs and power. */
+/** Home-screen widget: now playing, play/pause, volume, up to four inputs and power. */
 class StereoWidget : AppWidgetProvider() {
 
     /** Only the fields the widget shows, so it is redrawn just when they change. */
@@ -40,11 +40,9 @@ class StereoWidget : AppWidgetProvider() {
                     pickInputs(st.inputs, st.widgetInputs), st.sourceNumber, if (st.conn == Conn.OK) st.power else "")
             }
 
-            /** The user's three chosen inputs (Settings), filling any gap with the stereo's other inputs. */
-            private fun pickInputs(all: List<Input>, chosen: List<Int>): List<Input> {
-                val pref = chosen.mapNotNull { n -> all.firstOrNull { it.number == n } }
-                return (pref + all.filter { it !in pref }).take(3)
-            }
+            /** The inputs the user put on the widget (0–4), in the same order as the tiles. */
+            private fun pickInputs(all: List<Input>, chosen: List<Int>): List<Input> =
+                all.filter { it.number in chosen }.take(MAX_WIDGET)
         }
     }
 
@@ -116,12 +114,14 @@ class StereoWidget : AppWidgetProvider() {
                 "IDLE" -> { v.setImageViewResource(R.id.w_power, R.drawable.ic_moon); v.setInt(R.id.w_power, "setColorFilter", 0xFFE8A33D.toInt()) }
                 else -> { v.setImageViewResource(R.id.w_power, android.R.drawable.ic_lock_power_off); v.setInt(R.id.w_power, "setColorFilter", 0xFF9BA0AA.toInt()) }
             }
-            val slots = listOf(R.id.w_in0, R.id.w_in1, R.id.w_in2)
+            // Buttons share the row equally: 1 fills it, 2 take half each, up to 4. Unused ones are hidden.
+            val slots = listOf(R.id.w_in0, R.id.w_in1, R.id.w_in2, R.id.w_in3)
             slots.forEachIndexed { i, id ->
                 val inp = s.inputs.getOrNull(i)
                 if (inp == null) {
-                    v.setTextViewText(id, "")
+                    v.setViewVisibility(id, android.view.View.GONE)
                 } else {
+                    v.setViewVisibility(id, android.view.View.VISIBLE)
                     v.setTextViewText(id, inp.name)
                     v.setInt(id, "setBackgroundResource", if (inp.number == s.source) R.drawable.widget_btn_on else R.drawable.widget_btn)
                     v.setTextColor(id, if (inp.number == s.source) 0xFF0B0C0F.toInt() else 0xFFECEDEF.toInt())
