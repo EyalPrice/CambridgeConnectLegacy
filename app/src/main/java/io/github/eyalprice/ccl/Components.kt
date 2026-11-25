@@ -206,7 +206,7 @@ fun MiniPlayer(st: StereoState, title: String, onOpen: () -> Unit, vm: StereoVie
         TextButton(onClick = { vm.volumeStep(1) }) { Text("+", color = C.Text, fontSize = 20.sp) }
         val playing = st.transport == "PLAYING" || st.playback.spotifyPlaying
         CircleIconButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play",
-            { if (playing) vm.transport("Pause") else vm.play() }, filled = true, size = 44.dp)
+            { vm.togglePlay() }, filled = true, size = 44.dp)
     }
 }
 

@@ -110,7 +110,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
         Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { vm.transport("Previous") }) { Icon(Icons.Filled.SkipPrevious, "Previous", tint = C.Text) }
             CircleIconButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play",
-                { if (playing) vm.transport("Pause") else vm.play() }, filled = true, size = 60.dp)
+                { vm.togglePlay() }, filled = true, size = 60.dp)
             IconButton(onClick = { vm.transport("Next") }) { Icon(Icons.Filled.SkipNext, "Next", tint = C.Text) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -549,6 +549,7 @@ private fun signed(v: Int) = if (v > 0) "+$v" else "$v"
 fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update: String?, onCheckUpdate: () -> Unit) {
     val ctx = LocalContext.current
     var langDialog by remember { mutableStateOf(false) }
+    var widgetPick by remember { mutableStateOf<Int?>(null) }
     fun open(url: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     fun issue(kind: String) {
         val body = "**App:** $version\n**Android:** ${Build.VERSION.RELEASE} (${Build.MANUFACTURER} ${Build.MODEL})\n" +
@@ -569,6 +570,18 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
                 Segmented(listOf("Low", "Medium", "High"), st.brightness, { vm.setBrightness(it) })
             }
             if (st.languages.isNotEmpty()) RowItem("Stereo display language", st.language) { langDialog = true }
+        }
+        if (st.inputs.isNotEmpty()) {
+            SectionLabel("Home-screen widget")
+            Panel(Modifier.fillMaxWidth()) {
+                Text("Choose the three input buttons on the widget.", color = C.Muted, fontSize = 12.sp,
+                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp))
+                (0..2).forEach { slot ->
+                    val num = st.widgetInputs.getOrNull(slot)
+                    val name = st.inputs.firstOrNull { it.number == num }?.name ?: "Not set"
+                    RowItem("Button ${slot + 1}", name) { widgetPick = slot }
+                }
+            }
         }
         SectionLabel("About this stereo")
         Panel(Modifier.fillMaxWidth()) {
@@ -613,6 +626,17 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
             }
         }
         Text("Unofficial app. Not affiliated with Cambridge Audio.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 14.dp))
+    }
+    widgetPick?.let { slot ->
+        AlertDialog(onDismissRequest = { widgetPick = null }, title = { Text("Widget button ${slot + 1}") },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                    items(st.inputs) { inp ->
+                        Text(inp.name, color = if (st.widgetInputs.getOrNull(slot) == inp.number) C.Accent else C.Text,
+                            modifier = Modifier.fillMaxWidth().clickable { vm.setWidgetInput(slot, inp.number); widgetPick = null }.padding(vertical = 12.dp))
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { widgetPick = null }) { Text("Close") } })
     }
     if (langDialog) AlertDialog(onDismissRequest = { langDialog = false }, title = { Text("Stereo display language") },
         text = {

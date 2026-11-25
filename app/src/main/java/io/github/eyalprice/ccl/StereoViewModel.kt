@@ -50,6 +50,8 @@ data class StereoState(
     val languages: List<Pair<String, String>> = emptyList(),
     val language: String = "",
     val brightness: Int = 2,
+    /** Input numbers shown on the home-screen widget (user's choice; Radio, Spotify, TV by default). */
+    val widgetInputs: List<Int> = listOf(0, 24, 6),
 ) {
     val sourceName: String
         get() = inputs.firstOrNull { it.number == sourceNumber }?.name ?: Reciva.defaultInputName(sourceNumber)
@@ -265,7 +267,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(inputs = inputs, volumeMax = max, about = about,
                 languages = names.zip(codes), language = language,
-                brightness = prefs.getInt("brightness", 2))
+                brightness = prefs.getInt("brightness", 2),
+                widgetInputs = (prefs.getString("widgetInputs", null) ?: "0,24,6").split(',').mapNotNull { n -> n.trim().toIntOrNull() })
         }
         loadPresets()
         loadSound()
@@ -442,6 +445,44 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun transport(action: String) = send(action)
 
     fun play() = send("Play", "Speed" to "1")
+
+    fun isPlaying(st: StereoState = _state.value) =
+        st.transport == "PLAYING" || (st.isSpotify && st.playback.spotifyPlaying) ||
+            (!st.isSpotify && st.playback.state.equals("Playing", true))
+
+    /**
+     * Play/pause used by the app, the widget and the lock screen. Internet radio on some firmware
+     * ignores Pause, so if it is still playing a moment later, Stop is sent; and if Play doesn't
+     * restart a stopped radio station, its preset is played again.
+     */
+    fun togglePlay() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val st = _state.value
+            if (isPlaying(st)) {
+                callBlocking("Pause")
+                delay(1500); refreshOnce()
+                if (isPlaying()) { callBlocking("Stop"); delay(800) }
+            } else {
+                val preset = st.presets.firstOrNull { it.title.isNotBlank() && it.title == st.playback.title }
+                callBlocking("Play", "Speed" to "1")
+                delay(1500); refreshOnce()
+                if (!isPlaying() && st.isRadio) {
+                    if (preset != null) callBlocking("PlayPreset", "NewPresetNumberValue" to preset.number.toString())
+                    else callBlocking("Play", "Speed" to "1")
+                    delay(800)
+                }
+            }
+            refreshOnce()
+        }
+    }
+
+    fun setWidgetInput(slot: Int, number: Int) {
+        val list = _state.value.widgetInputs.toMutableList()
+        while (list.size < 3) list.add(-1)
+        list[slot] = number
+        prefs.edit().putString("widgetInputs", list.joinToString(",")).apply()
+        _state.update { it.copy(widgetInputs = list) }
+    }
 
     fun setTone(which: String, value: Int) {
         if (which == "bass") _state.update { it.copy(bass = value) } else _state.update { it.copy(treble = value) }

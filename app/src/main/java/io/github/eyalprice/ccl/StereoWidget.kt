@@ -18,7 +18,7 @@ class StereoWidget : AppWidgetProvider() {
     /** Only the fields the widget shows, so it is redrawn just when they change. */
     data class Snapshot(
         val connected: Boolean, val title: String, val sub: String, val volume: Int, val playing: Boolean,
-        val standby: Boolean, val inputs: List<Input>, val source: Int,
+        val standby: Boolean, val inputs: List<Input>, val source: Int, val power: String,
     ) {
         companion object {
             fun of(st: StereoState): Snapshot {
@@ -34,13 +34,15 @@ class StereoWidget : AppWidgetProvider() {
                     st.standby -> "${st.name} · standby"
                     else -> "${st.name} · ${st.sourceName}"
                 }
-                val playing = st.transport == "PLAYING" || (st.isSpotify && st.playback.spotifyPlaying)
-                return Snapshot(st.conn == Conn.OK, title, sub, st.volume, playing, st.standby, pickInputs(st.inputs), st.sourceNumber)
+                val playing = st.transport == "PLAYING" || (st.isSpotify && st.playback.spotifyPlaying) ||
+                    (!st.isSpotify && st.playback.state.equals("Playing", true))
+                return Snapshot(st.conn == Conn.OK, title, sub, st.volume, playing, st.standby,
+                    pickInputs(st.inputs, st.widgetInputs), st.sourceNumber, if (st.conn == Conn.OK) st.power else "")
             }
 
-            /** Radio, Spotify and TV when the stereo has them, then the rest in the stereo's order. */
-            private fun pickInputs(all: List<Input>): List<Input> {
-                val pref = listOf(0, 24, 6).mapNotNull { n -> all.firstOrNull { it.number == n } }
+            /** The user's three chosen inputs (Settings), filling any gap with the stereo's other inputs. */
+            private fun pickInputs(all: List<Input>, chosen: List<Int>): List<Input> {
+                val pref = chosen.mapNotNull { n -> all.firstOrNull { it.number == n } }
                 return (pref + all.filter { it !in pref }).take(3)
             }
         }
@@ -66,11 +68,7 @@ class StereoWidget : AppWidgetProvider() {
                     when (action) {
                         VOL_UP -> s.volumeStep(1)
                         VOL_DOWN -> s.volumeStep(-1)
-                        TOGGLE -> {
-                            val st = s.state.value
-                            val playing = st.transport == "PLAYING" || (st.isSpotify && st.playback.spotifyPlaying)
-                            if (playing) s.transport("Pause") else s.play()
-                        }
+                        TOGGLE -> s.togglePlay()
                         POWER -> s.togglePower()
                         INPUT -> s.selectInput(intent.getIntExtra("n", 0))
                     }
@@ -112,6 +110,12 @@ class StereoWidget : AppWidgetProvider() {
             v.setOnClickPendingIntent(R.id.w_up, pi(ctx, VOL_UP, 11))
             v.setOnClickPendingIntent(R.id.w_down, pi(ctx, VOL_DOWN, 12))
             v.setOnClickPendingIntent(R.id.w_power, pi(ctx, POWER, 13))
+            // Power icon follows the stereo: green power = on, amber moon = standby, grey = off / not reachable.
+            when (s.power) {
+                "ON" -> { v.setImageViewResource(R.id.w_power, android.R.drawable.ic_lock_power_off); v.setInt(R.id.w_power, "setColorFilter", 0xFF4CC38A.toInt()) }
+                "IDLE" -> { v.setImageViewResource(R.id.w_power, R.drawable.ic_moon); v.setInt(R.id.w_power, "setColorFilter", 0xFFE8A33D.toInt()) }
+                else -> { v.setImageViewResource(R.id.w_power, android.R.drawable.ic_lock_power_off); v.setInt(R.id.w_power, "setColorFilter", 0xFF9BA0AA.toInt()) }
+            }
             val slots = listOf(R.id.w_in0, R.id.w_in1, R.id.w_in2)
             slots.forEachIndexed { i, id ->
                 val inp = s.inputs.getOrNull(i)

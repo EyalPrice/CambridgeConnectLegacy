@@ -113,6 +113,6 @@
             android:layout_marginStart="6dp" android:padding="8dp"
             android:background="@drawable/widget_btn"
             android:contentDescription="Power: standby or wake"
-            android:src="@android:drawable/ic_lock_power_off" android:tint="#4CC38A" />
+            android:src="@android:drawable/ic_lock_power_off" />
     </LinearLayout>
 </LinearLayout>

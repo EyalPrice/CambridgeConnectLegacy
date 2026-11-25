@@ -52,8 +52,8 @@ class StereoService : Service() {
         val st0 = stereo.state.value
         session = MediaSession(this, "CambridgeConnectLegacy").apply {
             setCallback(object : MediaSession.Callback() {
-                override fun onPlay() = stereo.play()
-                override fun onPause() = stereo.transport("Pause")
+                override fun onPlay() = stereo.togglePlay()
+                override fun onPause() = stereo.togglePlay()
                 override fun onSkipToNext() = stereo.transport("Next")
                 override fun onSkipToPrevious() = stereo.transport("Previous")
                 override fun onStop() = stereo.transport("Stop")
@@ -77,7 +77,7 @@ class StereoService : Service() {
         when (intent?.action) {
             ACT_PREV -> stereo.transport("Previous")
             ACT_NEXT -> stereo.transport("Next")
-            ACT_TOGGLE -> if (isPlaying(stereo.state.value)) stereo.transport("Pause") else stereo.play()
+            ACT_TOGGLE -> stereo.togglePlay()
             ACT_CLOSE -> stopSelf()
         }
         return START_NOT_STICKY
