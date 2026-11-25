@@ -382,8 +382,53 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playPreset(n: Int) = send("PlayPreset", "NewPresetNumberValue" to n.toString())
 
-    fun saveCurrentAsPreset(n: Int) =
-        send("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString()) { loadPresets() }
+    /** Saves the station that is playing now into preset [n] and tells the user whether it worked. */
+    fun saveCurrentAsPreset(n: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val title = Reciva.playback(out("GetPlaybackDetails")).title.ifBlank { _state.value.playback.title }
+            toast("Saving “${title.ifBlank { "current station" }}” to preset $n…")
+            val ok = savePlayingTo(n, title)
+            toast(if (ok) "Saved “${presetTitleCached(n) ?: title}” to preset $n."
+                  else "The stereo didn't save to preset $n. Try another slot, or share the debug log (Pro › Troubleshooting).")
+            refreshOnce()
+        }
+    }
+
+    private fun presetTitleCached(n: Int) = _state.value.presets.firstOrNull { it.number == n }?.title
+
+    /**
+     * Stores what is playing into slot [n] and checks the slot afterwards. Some firmware refuses
+     * the usual save command for certain slots, so if the slot didn't change, the station is
+     * stored directly by its station id instead.
+     */
+    private suspend fun savePlayingTo(n: Int, title: String): Boolean {
+        val before = presetTitle(n)
+        fun saved(): Boolean {
+            val now = presetTitle(n)
+            return if (title.isNotBlank()) matches(now, title) else (!now.isNullOrBlank() && now != before)
+        }
+        ensureNavigator()
+        callBlocking("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString(), timeoutMs = 20000)
+        delay(800)
+        if (saved()) return true
+        val ids = callBlocking("GetStationId")?.out
+        val stationId = ids?.get("RetStationIdValue")
+        val menuId = ids?.get("RetMenuIdValue") ?: "0"
+        if (!stationId.isNullOrBlank() && stationId != "-1") {
+            for (m in listOf(menuId, "0", "-1").distinct()) {
+                callBlocking("SetPreset", "NewPresetNumberValue" to n.toString(),
+                    "NewPresetStationIdValue" to stationId, "NewPresetMenuIdValue" to m, timeoutMs = 20000)
+                delay(600)
+                if (saved()) return true
+            }
+        }
+        // Last try: clear the slot, then save again (some units won't overwrite a slot in an odd state).
+        callBlocking("DeletePreset", "PresetNumber" to n.toString())
+        delay(500)
+        callBlocking("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString(), timeoutMs = 20000)
+        delay(800)
+        return saved()
+    }
 
     fun deletePreset(n: Int) = send("DeletePreset", "PresetNumber" to n.toString()) { loadPresets() }
 
@@ -581,12 +626,9 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 toast("“${station.name}” didn't start playing, so it wasn't saved. Try Play first, then save it from Presets.")
                 return@launch
             }
-            ensureNavigator()
-            callBlocking("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString(), timeoutMs = 20000)
-            delay(1000)
-            val now = presetTitle(n)
-            if (matches(now, station.name)) toast("Saved “${now}” to preset $n.")
-            else toast("The stereo didn't save “${station.name}” to preset $n. Please share the debug log (Pro › Troubleshooting).")
+            val playingTitle = Reciva.playback(out("GetPlaybackDetails")).title.ifBlank { station.name }
+            if (savePlayingTo(n, playingTitle)) toast("Saved “${presetTitleCached(n) ?: station.name}” to preset $n.")
+            else toast("The stereo didn't save “${station.name}” to preset $n. Try another slot, or share the debug log (Pro › Troubleshooting).")
             refreshOnce()
         }
     }
