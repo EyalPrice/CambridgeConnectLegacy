@@ -27,7 +27,7 @@ object Reciva {
 
     fun presets(xml: String?): List<Preset> {
         val s = xmlValue(xml)
-        return Regex("<preset([^>]*)>(.*?)</preset>", DOT).findAll(s).mapNotNull { m ->
+        return Regex("<preset(\\s[^>]*)?>(.*?)</preset>", DOT).findAll(s).mapNotNull { m ->
             val n = attr(m.groupValues[1], "id")?.toIntOrNull() ?: return@mapNotNull null
             Preset(n, tag(m.groupValues[2], "title") ?: "", tag(m.groupValues[2], "description") ?: "")
         }.toList()
@@ -57,7 +57,7 @@ object Reciva {
         val stream = tag(s, "stream")
         val entry = tag(s, "playlist-entry")
         val spotify = tag(s, "spotify-status")
-        val fmtAttrs = Regex("<format([^>]*)>", DOT).find(s)?.groupValues?.get(1) ?: ""
+        val fmtAttrs = Regex("<format(\\s[^>]*)?>", DOT).find(s)?.groupValues?.get(1) ?: ""
         val codec = attr(fmtAttrs, "codec") ?: ""
         val bitrate = attr(fmtAttrs, "bit-rate")?.toIntOrNull() ?: 0
         val rate = attr(fmtAttrs, "sample-rate")?.toIntOrNull() ?: 0
@@ -92,11 +92,11 @@ object Reciva {
 
     fun menu(xml: String?): Menu? {
         val s = xmlValue(xml)
-        val mm = Regex("<menu([^>]*)>", DOT).find(s) ?: return null
+        val mm = Regex("<menu(\\s[^>]*)?>", DOT).find(s) ?: return null
         val attrs = mm.groupValues[1]
         val name = tag(s, "name") ?: ""
-        val countAttrs = Regex("<items([^>]*)>", DOT).find(s)?.groupValues?.get(1) ?: ""
-        val items = Regex("<item([^>]*)>(.*?)</item>", DOT).findAll(s).mapNotNull { m ->
+        val countAttrs = Regex("<items(\\s[^>]*)?>", DOT).find(s)?.groupValues?.get(1) ?: ""
+        val items = Regex("<item(\\s[^>]*)?>(.*?)</item>", DOT).findAll(s).mapNotNull { m ->
             val a = m.groupValues[1]
             val id = attr(a, "id")?.toIntOrNull() ?: return@mapNotNull null
             val inner = m.groupValues[2]
@@ -119,7 +119,7 @@ object Reciva {
     /** Search replies are not documented; accept any element that has an id and a name or title. */
     fun stations(xml: String?): List<Station> {
         val s = xmlValue(xml)
-        return Regex("<(station|item|result)([^>]*)>(.*?)</\\1>", DOT).findAll(s).mapNotNull { m ->
+        return Regex("<(station|item|result)(\\s[^>]*)?>(.*?)</\\1>", DOT).findAll(s).mapNotNull { m ->
             val attrs = m.groupValues[2]
             val inner = m.groupValues[3]
             val id = attr(attrs, "id") ?: tag(inner, "id") ?: return@mapNotNull null
@@ -134,7 +134,7 @@ object Reciva {
     /** Lists like <locations><location id="13">Australia</location>…, used for countries and genres. */
     fun idNames(xml: String?, tag: String): List<Pair<String, String>> {
         val s = xmlValue(xml)
-        return Regex("<$tag([^>]*)>(.*?)</$tag>", DOT).findAll(s).mapNotNull { m ->
+        return Regex("<$tag(\\s[^>]*)?>(.*?)</$tag>", DOT).findAll(s).mapNotNull { m ->
             val id = attr(m.groupValues[1], "id") ?: return@mapNotNull null
             val inner = m.groupValues[2]
             val name = tag(inner, "name") ?: unescape(inner.replace(Regex("<[^>]+>"), "").trim())
@@ -146,7 +146,7 @@ object Reciva {
 
     fun tracks(xml: String?): List<Track> {
         val s = xmlValue(xml)
-        return Regex("<(track|entry|item)([^>]*)>(.*?)</\\1>", DOT).findAll(s).mapIndexedNotNull { i, m ->
+        return Regex("<(track|entry|item)(\\s[^>]*)?>(.*?)</\\1>", DOT).findAll(s).mapIndexedNotNull { i, m ->
             val attrs = m.groupValues[2]
             val inner = m.groupValues[3]
             val id = attr(attrs, "id")?.toIntOrNull() ?: tag(inner, "id")?.toIntOrNull() ?: i
