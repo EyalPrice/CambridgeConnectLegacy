@@ -51,7 +51,7 @@ import java.io.File
 
 // ====================================================================== Now Playing
 
-private fun fmt(sec: Int) = "%d:%02d".format(sec / 60, sec % 60)
+private fun fmt(sec: Int) = nx(String.format(java.util.Locale.ROOT, "%d:%02d", sec / 60, sec % 60))
 
 @Composable
 fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit, onQueue: () -> Unit) {
@@ -121,7 +121,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
                     Text(subtitle, color = C.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (st.isSpotify && st.spotifyDur > 0) {
+            if (st.isSpotify && st.spotifyDur > 0) Ltr {
                 Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)) {
                     LinearProgressIndicator(progress = { st.spotifyPos.toFloat() / st.spotifyDur }, color = C.Accent,
                         trackColor = C.Line, modifier = Modifier.fillMaxWidth())
@@ -134,6 +134,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
                 }
             }
         }
+        Ltr {
         Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { vm.transport("Previous") }) { Icon(Icons.Filled.SkipPrevious, tx("previous"), tint = C.Text) }
             PlayButton(playing, st.playPending, 60.dp) { playPressed(ctx, st, vm, playing) }
@@ -143,6 +144,7 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
             CircleIconButton(Icons.Filled.Remove, tx("volume_down"), { vm.volumeStep(-1) }, size = 52.dp)
             VolumeKnob(st.volume, st.volumeMax, st.muted, onChange = { vm.setVolume(it) })
             CircleIconButton(Icons.Filled.Add, tx("volume_up"), { vm.volumeStep(1) }, size = 52.dp)
+        }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
             FilterChip(selected = st.muted, onClick = { vm.toggleMute() }, label = { Text(if (st.muted) tx("unmute") else tx("mute")) })
@@ -298,7 +300,7 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(if (on) C.Accent else C.Surface2), contentAlignment = Alignment.Center) {
-                    Text("$n", color = if (on) C.Bg else C.Text, fontWeight = FontWeight.SemiBold)
+                    Text(nx(n), color = if (on) C.Bg else C.Text, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
@@ -446,7 +448,7 @@ private fun SlotPicker(st: StereoState, title: String, onPick: (Int) -> Unit, on
                             val empty = st.presets.none { it.number == n }
                             Box(Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface2)
                                 .border(1.dp, if (empty) C.Accent else C.Line2, RoundedCornerShape(10.dp)).clickable { onPick(n) },
-                                contentAlignment = Alignment.Center) { Text("$n", color = C.Text, fontWeight = FontWeight.SemiBold) }
+                                contentAlignment = Alignment.Center) { Text(nx(n), color = C.Text, fontWeight = FontWeight.SemiBold) }
                         }
                     }
                 }
@@ -476,7 +478,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
             if (depth > 0) IconButton(onClick = {
                 busy = true
                 scope.launch { menu = vm.menuBack(); depth--; busy = false }
-            }) { Icon(Icons.Filled.ArrowBack, tx("back"), tint = C.Text) }
+            }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tx("back"), tint = C.Text) }
             Text(menu?.name ?: rootName, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = if (depth > 0) 0.dp else 8.dp).weight(1f))
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = C.Accent, strokeWidth = 2.dp)
@@ -516,7 +518,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
                     Icon(if (item.type == "menu") Icons.Outlined.Folder else Icons.Outlined.PlayCircle, null, tint = C.Muted)
                     Text(item.name, color = C.Text, fontSize = 15.sp, modifier = Modifier.padding(start = 14.dp).weight(1f),
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (item.type == "menu") Text("›", color = C.Muted)
+                    if (item.type == "menu") Text(chevron(), color = C.Muted)
                 }
             }
         }
@@ -567,7 +569,7 @@ fun QueueScreen(st: StereoState, vm: StereoViewModel) {
             else -> LazyColumn(Modifier.weight(1f)) {
                 itemsIndexed(t) { i, tr ->
                     Row(Modifier.fillMaxWidth().height(60.dp).clickable { vm.queueJump(tr.id) }, verticalAlignment = Alignment.CenterVertically) {
-                        Text("${i + 1}", color = C.Muted, modifier = Modifier.width(32.dp))
+                        Text(nx(i + 1), color = C.Muted, modifier = Modifier.width(32.dp))
                         Column(Modifier.weight(1f)) {
                             Text(tr.title, color = C.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (tr.artist.isNotBlank()) Text(tr.artist, color = C.Muted, fontSize = 12.sp, maxLines = 1)
@@ -598,13 +600,13 @@ fun SoundScreen(st: StereoState, vm: StereoViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Panel(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
-                Stepper(tx("volume"), "${st.volume}", { vm.volumeStep(-1) }, { vm.volumeStep(1) },
+                Stepper(tx("volume"), nx(st.volume), { vm.volumeStep(-1) }, { vm.volumeStep(1) },
                     minusEnabled = st.volume > 0, plusEnabled = !st.volumeHard || st.volume < st.volumeMax)
                 st.bass?.let { b -> Stepper(tx("bass"), signed(b), { vm.setTone("bass", b - 1) }, { vm.setTone("bass", b + 1) },
                     busy = "bass" in st.busy, minusEnabled = st.bassMin == null || b > st.bassMin, plusEnabled = st.bassMax == null || b < st.bassMax) }
                 st.treble?.let { t -> Stepper(tx("treble"), signed(t), { vm.setTone("treble", t - 1) }, { vm.setTone("treble", t + 1) },
                     busy = "treble" in st.busy, minusEnabled = st.trebleMin == null || t > st.trebleMin, plusEnabled = st.trebleMax == null || t < st.trebleMax) }
-                st.balance?.let { b -> Stepper(tx("balance"), if (b == 0) tx("centre") else if (b < 0) "${tx("left_short")} ${-b}" else "${tx("right_short")} $b", { vm.balanceStep(-1) }, { vm.balanceStep(1) },
+                st.balance?.let { b -> Stepper(tx("balance"), if (b == 0) tx("centre") else if (b < 0) "${tx("left_short")} ${nx(-b)}" else "${tx("right_short")} ${nx(b)}", { vm.balanceStep(-1) }, { vm.balanceStep(1) },
                     minusLabel = tx("left_short"), plusLabel = tx("right_short"), busy = "balance" in st.busy,
                     minusEnabled = st.balanceMin == null || b > st.balanceMin, plusEnabled = st.balanceMax == null || b < st.balanceMax) }
                 Text(tx("limits_hint"),
@@ -629,7 +631,7 @@ fun SoundScreen(st: StereoState, vm: StereoViewModel) {
     }
 }
 
-private fun signed(v: Int) = if (v > 0) "+$v" else "$v"
+private fun signed(v: Int) = if (v > 0) "+" + nx(v) else if (v < 0) "-" + nx(-v) else nx(v)
 
 // ====================================================================== Settings
 
@@ -642,7 +644,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
     if (appLangDialog) AlertDialog(onDismissRequest = { appLangDialog = false }, title = { Text(tx("app_language")) },
         text = {
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                items(listOf("") + I18n.CODES) { code ->
+                items(listOf("") + I18n.CHOICES) { code ->
                     val on = I18n.choice == code
                     Text(if (code.isBlank()) tx("same_as_phone") else I18n.NAMES[code] ?: code,
                         color = if (on) C.Accent else C.Text, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,

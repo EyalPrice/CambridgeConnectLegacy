@@ -95,7 +95,7 @@ class StereoWidget : AppWidgetProvider() {
             val mgr = AppWidgetManager.getInstance(ctx)
             val ids = mgr.getAppWidgetIds(ComponentName(ctx, StereoWidget::class.java))
             if (ids.isEmpty()) return
-            val v = RemoteViews(ctx.packageName, R.layout.widget_stereo)
+            val v = RemoteViews(ctx.packageName, if (I18n.rtl) R.layout.widget_stereo_rtl else R.layout.widget_stereo)
             v.setTextViewText(R.id.w_title, s.title)
             v.setTextViewText(R.id.w_sub, s.sub)
             v.setTextViewText(R.id.w_vol, if (s.connected) tx("vol_short", s.volume) else tx("vol_dash"))

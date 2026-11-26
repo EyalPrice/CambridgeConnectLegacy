@@ -286,7 +286,7 @@ fun VolumeKnob(value: Int, max: Int, muted: Boolean, onChange: (Int) -> Unit, mo
             drawCircle(C.Accent, 6.dp.toPx(), Offset(center.x + (ir * cos(ang)).toFloat(), center.y + (ir * sin(ang)).toFloat()))
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$value", color = C.Text, fontSize = 46.sp, fontWeight = FontWeight.SemiBold)
+            Text(nx(value), color = C.Text, fontSize = 46.sp, fontWeight = FontWeight.SemiBold)
             Text(if (muted) tx("muted_caps") else tx("volume_caps"), color = C.Muted, fontSize = 11.sp, letterSpacing = 1.3.sp)
         }
     }
@@ -301,12 +301,13 @@ fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Uni
             Text(label, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             if (busy) BusySpinner(Modifier.padding(start = 8.dp))
         }
+        Ltr { Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(onClick = onMinus, enabled = enabled && minusEnabled, border = BorderStroke(1.dp, C.Line2),
             modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text(minusLabel, color = C.Text, fontSize = if (minusLabel.length > 1) 14.sp else 20.sp, fontWeight = FontWeight.SemiBold) }
         Text(value, color = C.Accent, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.width(72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         OutlinedButton(onClick = onPlus, enabled = enabled && plusEnabled, border = BorderStroke(1.dp, C.Line2),
-            modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text(plusLabel, color = C.Text, fontSize = if (plusLabel.length > 1) 14.sp else 20.sp, fontWeight = FontWeight.SemiBold) }
+            modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text(plusLabel, color = C.Text, fontSize = if (plusLabel.length > 1) 14.sp else 20.sp, fontWeight = FontWeight.SemiBold) } } }
     }
 }
 
@@ -335,7 +336,7 @@ fun RowItem(title: String, value: String? = null, icon: androidx.compose.ui.grap
         if (icon != null) Icon(icon, null, tint = C.Accent, modifier = Modifier.padding(end = 10.dp).size(20.dp))
         Text(title, color = C.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
         if (value != null) Text(value, color = C.Muted, fontSize = 14.sp)
-        if (onClick != null) Text("  ›", color = C.Muted, fontSize = 14.sp)
+        if (onClick != null) Text("  " + chevron(), color = C.Muted, fontSize = 14.sp)
     }
 }
 
@@ -417,3 +418,22 @@ fun playPressed(ctx: android.content.Context, st: StereoState, vm: StereoViewMod
 @Composable
 fun BusySpinner(modifier: Modifier = Modifier) =
     CircularProgressIndicator(modifier.size(14.dp), color = C.Accent, strokeWidth = 1.8.dp)
+
+/** Lays out the app right to left for Hebrew and Arabic. */
+@Composable
+fun AppDirection(content: @Composable () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides
+            if (I18n.rtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr,
+        content = content)
+}
+
+/** Keeps a group left to right in every language: media controls, − / + buttons, balance L / R. */
+@Composable
+fun Ltr(content: @Composable () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr, content = content)
+}
+
+/** The "more" arrow at the end of a row: points left in right-to-left languages. */
+fun chevron(): String = if (I18n.rtl) "‹" else "›"

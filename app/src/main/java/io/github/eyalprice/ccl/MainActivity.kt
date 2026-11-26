@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
         I18n.init(this)   // also picks up a phone-language change
         window.statusBarColor = C.Bg.toArgb()
         window.navigationBarColor = C.Bar.toArgb()
-        setContent { CclTheme { App(vm, versionName(), versionCode(), starts.intValue) } }
+        setContent { CclTheme { AppDirection { App(vm, versionName(), versionCode(), starts.intValue) } } }
     }
 
     /** Counts each time the app comes to the front, so the update check runs again then. */
@@ -161,7 +161,7 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
             }
             if (page != null) {
                 Row(Modifier.fillMaxWidth().clickable { page = null }.padding(horizontal = 12.dp, vertical = 2.dp)) {
-                    Icon(Icons.Filled.ArrowBack, tx("back"), tint = C.Muted, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, tx("back"), tint = C.Muted, modifier = Modifier.size(18.dp))
                     Text("  " + tx("back"), color = C.Muted, fontSize = 13.sp)
                 }
             }

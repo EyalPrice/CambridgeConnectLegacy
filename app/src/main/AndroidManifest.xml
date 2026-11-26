@@ -16,6 +16,7 @@
     </queries>
 
     <application
+        android:supportsRtl="true"
         android:name=".CclApp"
         android:label="Cambridge Connect Legacy"
         android:icon="@drawable/ic_launcher"
