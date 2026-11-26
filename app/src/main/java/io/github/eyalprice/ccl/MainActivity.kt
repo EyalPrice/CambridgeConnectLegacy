@@ -198,7 +198,7 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
                                 Tab.MUSIC -> Icons.Outlined.LibraryMusic
                             }, t.label)
                         },
-                        label = { Text(t.label) },
+                        label = { FitText(t.label, androidx.compose.ui.graphics.Color.Unspecified, 12.sp, minSize = 8.sp) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = C.Accent, selectedTextColor = C.Accent,
                             indicatorColor = C.AccentBg, unselectedIconColor = C.Muted, unselectedTextColor = C.Muted),
                     )

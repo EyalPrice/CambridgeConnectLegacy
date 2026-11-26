@@ -108,7 +108,7 @@ fun TopBar(title: String, st: StereoState, onSound: () -> Unit, onSettings: () -
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 10.dp, top = 14.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = C.Text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+            FitText(title, C.Text, 26.sp, minSize = 17.sp, weight = FontWeight.SemiBold)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(7.dp).clip(CircleShape).background(
                     when { st.conn != Conn.OK -> C.Muted; st.standby -> C.Accent; else -> C.Green }))
@@ -134,8 +134,8 @@ fun TopBar(title: String, st: StereoState, onSound: () -> Unit, onSettings: () -
                 }
                 Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
             }
-            Text(when { st.conn != Conn.OK -> tx("power"); st.power == "IDLE" -> tx("power_standby"); st.power == "OFF" -> tx("power_off"); else -> tx("power_on") },
-                color = C.Text, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+            FitText(when { st.conn != Conn.OK -> tx("power"); st.power == "IDLE" -> tx("power_standby"); st.power == "OFF" -> tx("power_off"); else -> tx("power_on") },
+                C.Text, 10.sp, Modifier.padding(top = 3.dp))
         }
     }
 }
@@ -145,8 +145,20 @@ private fun LabeledButton(icon: ImageVector, label: String, onClick: () -> Unit)
     Column(Modifier.width(58.dp).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(42.dp).clip(CircleShape).background(C.Surface).border(1.dp, C.Line2, CircleShape),
             contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Text, modifier = Modifier.size(20.dp)) }
-        Text(label, color = C.Text, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+        FitText(label, C.Text, 10.sp, Modifier.padding(top = 3.dp))
     }
+}
+
+/**
+ * One line of text that shrinks its font (down to [minSize]) instead of wrapping or being cut off,
+ * so long words in some languages still fit small labels.
+ */
+@Composable
+fun FitText(text: String, color: Color, size: androidx.compose.ui.unit.TextUnit, modifier: Modifier = Modifier,
+            minSize: androidx.compose.ui.unit.TextUnit = 7.sp, weight: FontWeight? = null) {
+    var fs by remember(text, size) { mutableStateOf(size) }
+    Text(text, color = color, fontSize = fs, fontWeight = weight, maxLines = 1, softWrap = false, modifier = modifier,
+        onTextLayout = { r -> if (r.didOverflowWidth && fs.value > minSize.value) fs = (fs.value * 0.92f).sp })
 }
 
 @Composable
