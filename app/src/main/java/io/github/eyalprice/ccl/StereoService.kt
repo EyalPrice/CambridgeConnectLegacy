@@ -45,8 +45,8 @@ class StereoService : Service() {
     override fun onCreate() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Stereo controls", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Lock-screen and notification controls for your stereo"
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, tx("channel_name"), NotificationManager.IMPORTANCE_LOW).apply {
+            description = tx("channel_desc")
             setShowBadge(false)
         })
         val st0 = stereo.state.value
@@ -159,11 +159,11 @@ class StereoService : Service() {
             .setOngoing(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setCategory(Notification.CATEGORY_TRANSPORT)
-            .addAction(action(android.R.drawable.ic_media_previous, "Previous", ACT_PREV, 1))
-            .addAction(if (playing) action(android.R.drawable.ic_media_pause, "Pause", ACT_TOGGLE, 2)
-                       else action(android.R.drawable.ic_media_play, "Play", ACT_TOGGLE, 2))
-            .addAction(action(android.R.drawable.ic_media_next, "Next", ACT_NEXT, 3))
-            .addAction(action(android.R.drawable.ic_menu_close_clear_cancel, "Close", ACT_CLOSE, 4))
+            .addAction(action(android.R.drawable.ic_media_previous, tx("previous"), ACT_PREV, 1))
+            .addAction(if (playing) action(android.R.drawable.ic_media_pause, tx("pause"), ACT_TOGGLE, 2)
+                       else action(android.R.drawable.ic_media_play, tx("play"), ACT_TOGGLE, 2))
+            .addAction(action(android.R.drawable.ic_media_next, tx("next"), ACT_NEXT, 3))
+            .addAction(action(android.R.drawable.ic_menu_close_clear_cancel, tx("close"), ACT_CLOSE, 4))
             .setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0, 1, 2))
             .build()
     }

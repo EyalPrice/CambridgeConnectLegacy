@@ -29,9 +29,9 @@ class StereoWidget : AppWidgetProvider() {
                     else -> st.sourceName
                 }
                 val sub = when {
-                    st.name.isBlank() -> "Tap to open"
-                    st.conn != Conn.OK -> "${st.name} · not reachable"
-                    st.standby -> "${st.name} · standby"
+                    st.name.isBlank() -> tx("tap_to_open")
+                    st.conn != Conn.OK -> tx("not_reachable", st.name)
+                    st.standby -> tx("standby_sub", st.name)
                     else -> "${st.name} · ${st.sourceName}"
                 }
                 val playing = st.transport == "PLAYING" || (st.isSpotify && st.playback.spotifyPlaying) ||
@@ -98,7 +98,7 @@ class StereoWidget : AppWidgetProvider() {
             val v = RemoteViews(ctx.packageName, R.layout.widget_stereo)
             v.setTextViewText(R.id.w_title, s.title)
             v.setTextViewText(R.id.w_sub, s.sub)
-            v.setTextViewText(R.id.w_vol, if (s.connected) "Vol ${s.volume}" else "Vol –")
+            v.setTextViewText(R.id.w_vol, if (s.connected) tx("vol_short", s.volume) else tx("vol_dash"))
             v.setImageViewResource(R.id.w_play, if (s.playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
             val open = PendingIntent.getActivity(ctx, 1, Intent(ctx, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE)

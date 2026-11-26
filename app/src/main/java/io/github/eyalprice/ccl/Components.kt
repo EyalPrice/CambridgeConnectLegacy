@@ -113,16 +113,16 @@ fun TopBar(title: String, st: StereoState, onSound: () -> Unit, onSettings: () -
                 Box(Modifier.size(7.dp).clip(CircleShape).background(
                     when { st.conn != Conn.OK -> C.Muted; st.standby -> C.Accent; else -> C.Green }))
                 Spacer(Modifier.width(6.dp))
-                Text("${st.name.ifBlank { "Not connected" }} · Vol ${st.volume}", color = C.Muted, fontSize = 12.sp)
+                Text("${st.name.ifBlank { tx("not_connected") }} · ${tx("vol_short", st.volume)}", color = C.Muted, fontSize = 12.sp)
             }
         }
-        LabeledButton(Icons.Outlined.Tune, "Sound", onSound)
-        LabeledButton(Icons.Outlined.Settings, "Settings", onSettings)
+        LabeledButton(Icons.Outlined.Tune, tx("page_sound"), onSound)
+        LabeledButton(Icons.Outlined.Settings, tx("page_settings"), onSettings)
         Column(Modifier.width(58.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 Modifier.size(42.dp).clip(CircleShape).background(C.Surface).border(1.dp, C.Line2, CircleShape)
                     .combinedClickable(onClick = onPower, onLongClick = onPowerHold)
-                    .semantics { contentDescription = "Power. Tap for standby, hold for full off" },
+                    .semantics { contentDescription = tx("power_desc") },
                 contentAlignment = Alignment.Center,
             ) {
                 val (icon, tint) = when {
@@ -134,7 +134,7 @@ fun TopBar(title: String, st: StereoState, onSound: () -> Unit, onSettings: () -
                 }
                 Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
             }
-            Text(when { st.conn != Conn.OK -> "Power"; st.power == "IDLE" -> "Standby"; st.power == "OFF" -> "Off"; else -> "On" },
+            Text(when { st.conn != Conn.OK -> tx("power"); st.power == "IDLE" -> tx("power_standby"); st.power == "OFF" -> tx("power_off"); else -> tx("power_on") },
                 color = C.Text, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
         }
     }
@@ -171,7 +171,7 @@ fun ArtBox(url: String, size: Dp, radius: Dp = 12.dp) {
         contentAlignment = Alignment.Center) {
         AppMark(size * 0.4f, faded = true)
         if (url.isNotBlank()) {
-            AsyncImage(model = url, contentDescription = "Artwork", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            AsyncImage(model = url, contentDescription = tx("artwork"), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
 }
@@ -203,7 +203,7 @@ fun MiniPlayer(st: StereoState, title: String, onOpen: () -> Unit, vm: StereoVie
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     if (st.tuning) CircularProgressIndicator(Modifier.padding(start = 6.dp).size(12.dp), color = C.Accent, strokeWidth = 1.5.dp)
                 }
-                Text("${st.sourceName} · Vol ${st.volume}", color = C.Muted, fontSize = 11.sp, maxLines = 1)
+                Text("${st.sourceName} · ${tx("vol_short", st.volume)}", color = C.Muted, fontSize = 11.sp, maxLines = 1)
             }
         }
         TextButton(onClick = { vm.volumeStep(-1) }) { Text("−", color = C.Text, fontSize = 20.sp) }
@@ -222,7 +222,7 @@ fun VolumeKnob(value: Int, max: Int, muted: Boolean, onChange: (Int) -> Unit, mo
     val current by rememberUpdatedState(value)
     val change0 by rememberUpdatedState(onChange)
     val degPerStep = 270f / max.coerceAtLeast(1) * 1.4f
-    Box(modifier.size(232.dp).semantics { contentDescription = "Volume $value of $max" }, contentAlignment = Alignment.Center) {
+    Box(modifier.size(232.dp).semantics { contentDescription = tx("volume_desc", value, max) }, contentAlignment = Alignment.Center) {
         Canvas(
             Modifier.fillMaxSize().pointerInput(max) {
                 var last = 0f
@@ -275,7 +275,7 @@ fun VolumeKnob(value: Int, max: Int, muted: Boolean, onChange: (Int) -> Unit, mo
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("$value", color = C.Text, fontSize = 46.sp, fontWeight = FontWeight.SemiBold)
-            Text(if (muted) "MUTED" else "VOLUME", color = C.Muted, fontSize = 11.sp, letterSpacing = 1.3.sp)
+            Text(if (muted) tx("muted_caps") else tx("volume_caps"), color = C.Muted, fontSize = 11.sp, letterSpacing = 1.3.sp)
         }
     }
 }
@@ -363,7 +363,7 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
 fun PlayButton(playing: Boolean, pending: Boolean, size: Dp, onClick: () -> Unit) {
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size + 8.dp)) {
         if (pending) CircularProgressIndicator(Modifier.size(size + 8.dp), color = C.Accent, strokeWidth = 2.5.dp)
-        CircleIconButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play",
+        CircleIconButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) tx("pause") else tx("play"),
             onClick, filled = true, size = size)
     }
 }
@@ -371,10 +371,10 @@ fun PlayButton(playing: Boolean, pending: Boolean, size: Dp, onClick: () -> Unit
 
 /** Search box for long lists: filters as you type, with a clear button. */
 @Composable
-fun SearchField(value: String, onChange: (String) -> Unit, hint: String = "Search", modifier: Modifier = Modifier) {
+fun SearchField(value: String, onChange: (String) -> Unit, hint: String = tx("search"), modifier: Modifier = Modifier) {
     OutlinedTextField(value, onChange, placeholder = { Text(hint) }, singleLine = true,
         leadingIcon = { Icon(Icons.Filled.Search, null) },
-        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Filled.Close, "Clear search") } },
+        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Filled.Close, tx("clear_search")) } },
         modifier = modifier.fillMaxWidth())
 }
 
@@ -389,7 +389,7 @@ fun playPressed(ctx: android.content.Context, st: StereoState, vm: StereoViewMod
     if (st.isSpotify && !playing && !st.playback.spotifyActive) {
         val open = ctx.packageManager.getLaunchIntentForPackage("com.spotify.music")
         if (open == null) {
-            android.widget.Toast.makeText(ctx, "Spotify isn't installed on this phone.", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(ctx, tx("spotify_not_installed"), android.widget.Toast.LENGTH_SHORT).show()
         } else {
             open.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             ctx.startActivity(open)

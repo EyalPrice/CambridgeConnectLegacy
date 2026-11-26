@@ -136,11 +136,11 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 // Read each device's description in parallel so one slow device doesn't hold up the rest.
                 list.map { f -> async { Upnp.peek(f) } }.forEach { it.await() }
                 val cam = list.count { it.cambridge }
-                info = if (list.isEmpty()) "No devices answered on this Wi-Fi."
-                else "${list.size} device(s) answered, $cam look like Cambridge Audio."
+                info = if (list.isEmpty()) tx("no_devices")
+                else tx("devices_answered", list.size, cam)
                 list.sortedByDescending { it.cambridge }
             } catch (e: Exception) {
-                info = "Search failed: ${e.message}"
+                info = tx("search_failed", e.message ?: "")
                 emptyList()
             }
             _state.update { it.copy(conn = if (device == null) Conn.NONE else it.conn, found = found, searchInfo = info) }
@@ -258,7 +258,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val r = callBlocking(action, *args)
-                if (r == null || !r.ok()) toast("The stereo didn't accept “$action”.")
+                if (r == null || !r.ok()) toast(tx("not_accepted", action))
                 after?.invoke()
                 refreshOnce()
             } finally {
@@ -281,11 +281,11 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val p = StereoCheck.Progress { progress(it) }
         val sb = StringBuilder()
         try {
-            progress("Reading everything the stereo reports…")
+            progress(tx("prog_reading"))
             check.runReadTest(p)
-            progress("Capturing what's playing now…")
+            progress(tx("prog_capturing"))
             check.captureSource("Current: ${st.sourceName}", p)
-            progress("Testing settings (each is put back)…")
+            progress(tx("prog_testing"))
             check.runChangeTest(p)
         } catch (e: Exception) {
             sb.append("!! Checks stopped early: $e\n")
@@ -294,7 +294,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         }
         sb.append(check.buildReport())
 
-        progress("Adding the app's own information…")
+        progress(tx("prog_app"))
         sb.append("\n##### 4. APP STATE\n")
         sb.append("Connection: ${st.conn} · power=${st.power} · source=${st.sourceNumber} (${st.sourceName}) · volume=${st.volume}/${st.volumeMax}" +
             (if (st.volumeHard) " (top certain)" else " (top not certain)") + " · muted=${st.muted}\n")
@@ -313,7 +313,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             sb.append(sv.actions.joinToString(", ") { a -> a.name + a.inArgs().joinToString(",", "(", ")") { it.name } } + "\n")
         }
 
-        progress("Checking stream and web page information…")
+        progress(tx("prog_streams"))
         sb.append("\n##### 6. STREAMS AND WEB PAGE\n")
         sb.append(try { streamProbe() } catch (e: Exception) { "failed: $e" }).append('\n')
 
@@ -360,7 +360,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun send(action: String, vararg args: Pair<String, String>, after: (() -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val r = callBlocking(action, *args)
-            if (r == null || !r.ok()) toast("The stereo didn't accept “$action”.")
+            if (r == null || !r.ok()) toast(tx("not_accepted", action))
             after?.invoke()
             refreshOnce()
         }
@@ -602,10 +602,10 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun saveCurrentAsPreset(n: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             val title = Reciva.playback(out("GetPlaybackDetails")).title.ifBlank { _state.value.playback.title }
-            toast("Saving “${title.ifBlank { "current station" }}” to preset $n…")
+            toast(tx("saving_to", title.ifBlank { tx("current_station") }, n))
             val ok = savePlayingTo(n, title)
-            toast(if (ok) "Saved “${presetTitleCached(n) ?: title}” to preset $n."
-                  else "The stereo didn't save to preset $n. Try another slot, or create a diagnostic report (Settings › Diagnostics).")
+            toast(if (ok) tx("saved_to", presetTitleCached(n) ?: title, n)
+                  else tx("not_saved", n))
             refreshOnce()
         }
     }
@@ -812,7 +812,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val arg = if (which == "bass") "NewToneCtrlBassValue" else "NewToneCtrlTrebleValue"
         sendSettled(which) {
             val sent = callBlocking(action, arg to v.toString())
-            if (sent == null || !sent.ok()) { toast("The stereo didn't accept “$action”."); return@sendSettled }
+            if (sent == null || !sent.ok()) { toast(tx("not_accepted", action)); return@sendSettled }
             if (latestRequest[which] != v) return@sendSettled   // a newer press is on its way; judge that one instead
             val key = if (which == "bass") "bass" else "treble"
             // Read the stereo directly (the screen keeps showing the requested value while this control is busy).
@@ -843,7 +843,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(bassMin = null, bassMax = null, trebleMin = null, trebleMax = null, balanceMin = -BALANCE_DEFAULT, balanceMax = BALANCE_DEFAULT,
                     volumeMax = reported ?: maxOf(40, it.volume), volumeHard = reported != null)
             }
-            toast("Learned limits forgotten. The app will learn them again as you use the stereo.")
+            toast(tx("limits_forgotten"))
         }
     }
 
@@ -880,7 +880,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         latestRequest["balance"] = steps
         sendSettled("balance") {
             val sent = callBlocking("SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString())
-            if (sent == null || !sent.ok()) toast("The stereo didn't accept the balance change.")
+            if (sent == null || !sent.ok()) toast(tx("balance_not_accepted"))
         }
     }
 
@@ -1024,7 +1024,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun saveStationToSlot(station: Reciva.Station, n: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            toast("Saving “${station.name}” to preset $n…")
+            toast(tx("saving_to", station.name, n))
             val before = presetTitle(n)
             for (menuId in listOf("0", "")) {
                 val r = callBlocking("SetPreset", "NewPresetNumberValue" to n.toString(),
@@ -1032,7 +1032,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 if (r != null && r.ok()) {
                     val now = presetTitle(n)
                     if (matches(now, station.name) || (now != null && now != before && now.isNotBlank())) {
-                        toast("Saved “${now}” to preset $n.")
+                        toast(tx("saved_to", now, n))
                         return@launch
                     }
                 }
@@ -1046,12 +1046,12 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 if (pb.state.equals("Playing", true) && matches(pb.title, station.name)) { playing = true; break }
             }
             if (!playing) {
-                toast("“${station.name}” didn't start playing, so it wasn't saved. Try Play first, then save it from Presets.")
+                toast(tx("didnt_start", station.name))
                 return@launch
             }
             val playingTitle = Reciva.playback(out("GetPlaybackDetails")).title.ifBlank { station.name }
-            if (savePlayingTo(n, playingTitle)) toast("Saved “${presetTitleCached(n) ?: station.name}” to preset $n.")
-            else toast("The stereo didn't save “${station.name}” to preset $n. Try another slot, or create a diagnostic report (Settings › Diagnostics).")
+            if (savePlayingTo(n, playingTitle)) toast(tx("saved_to", presetTitleCached(n) ?: station.name, n))
+            else toast(tx("not_saved_x", station.name, n))
             refreshOnce()
         }
     }

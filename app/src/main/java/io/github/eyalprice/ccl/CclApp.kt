@@ -16,6 +16,7 @@ class CclApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        I18n.init(this)
         scope.launch {
             stereo.state
                 .map { StereoWidget.Snapshot.of(it) }

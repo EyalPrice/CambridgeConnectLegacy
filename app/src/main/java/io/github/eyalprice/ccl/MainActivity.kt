@@ -33,12 +33,14 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-enum class Tab(val label: String, val title: String) {
-    PLAY("Playing", "Now Playing"), INPUTS("Inputs", "Inputs"), RADIO("Radio", "Radio"),
-    MUSIC("Music", "Music")
+enum class Tab(private val labelKey: String, private val titleKey: String) {
+    PLAY("tab_playing", "tab_now_playing"), INPUTS("tab_inputs", "tab_inputs"), RADIO("tab_radio", "tab_radio"),
+    MUSIC("tab_music", "tab_music");
+    val label: String get() = tx(labelKey)
+    val title: String get() = tx(titleKey)
 }
 
-enum class Page(val title: String) { SOUND("Sound"), SETTINGS("Settings"), QUEUE("Queue") }
+enum class Page(val titleKey: String) { SOUND("page_sound"), SETTINGS("page_settings"), QUEUE("page_queue") }
 
 class MainActivity : ComponentActivity() {
 
@@ -46,6 +48,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        I18n.init(this)   // also picks up a phone-language change
         window.statusBarColor = C.Bg.toArgb()
         window.navigationBarColor = C.Bar.toArgb()
         setContent { CclTheme { App(vm, versionName(), versionCode(), starts.intValue) } }
@@ -109,15 +112,15 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
     val snack = remember { SnackbarHostState() }
 
     LaunchedEffect(starts, checkTick) {
-        updateStatus = "Checking…"
+        updateStatus = tx("checking")
         val r = checkRelease(versionCode)
         update = r.newer
         updateStatus = when {
-            r.newer != null -> "New: ${r.newer.first}"
-            r.failed -> "Couldn't check – tap to retry"
-            else -> "Up to date"
+            r.newer != null -> tx("update_new", r.newer.first)
+            r.failed -> tx("update_failed")
+            else -> tx("up_to_date")
         }
-        if (checkTick > 0 && r.newer == null && !r.failed) vm.toast("You have the newest version.")
+        if (checkTick > 0 && r.newer == null && !r.failed) vm.toast(tx("newest_version"))
     }
 
     // Lock-screen controls and locked volume keys need the media service; Android 13+ also asks for notifications.
@@ -145,20 +148,20 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
 
     Scaffold(containerColor = C.Bg, snackbarHost = { SnackbarHost(snack) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {
-            TopBar(page?.title ?: tab.title, st,
+            TopBar(page?.let { tx(it.titleKey) } ?: tab.title, st,
                 onSound = { page = Page.SOUND }, onSettings = { page = Page.SETTINGS },
                 onPower = { vm.togglePower() }, onPowerHold = { powerOff = true })
             update?.let { (tag, url) ->
-                Banner("New version $tag available", "Download") { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                Banner(tx("new_version", tag), tx("download")) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             }
             when {
-                st.conn == Conn.UNREACHABLE -> Banner("Can't reach ${st.name}. Is it on this Wi-Fi?", "Retry") { vm.connect(vm.device?.location ?: "") }
-                st.standby -> Banner("${st.name} is in standby", "Wake up") { vm.power("ON") }
+                st.conn == Conn.UNREACHABLE -> Banner(tx("banner_unreachable", st.name), tx("retry")) { vm.connect(vm.device?.location ?: "") }
+                st.standby -> Banner(tx("banner_standby", st.name), tx("wake_up")) { vm.power("ON") }
             }
             if (page != null) {
                 Row(Modifier.fillMaxWidth().clickable { page = null }.padding(horizontal = 12.dp, vertical = 2.dp)) {
-                    Icon(Icons.Filled.ArrowBack, "Back", tint = C.Muted, modifier = Modifier.size(18.dp))
-                    Text("  Back", color = C.Muted, fontSize = 13.sp)
+                    Icon(Icons.Filled.ArrowBack, tx("back"), tint = C.Muted, modifier = Modifier.size(18.dp))
+                    Text("  " + tx("back"), color = C.Muted, fontSize = 13.sp)
                 }
             }
             Box(Modifier.weight(1f)) {
@@ -206,11 +209,11 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
 
     if (powerOff) AlertDialog(
         onDismissRequest = { powerOff = false },
-        title = { Text("Turn the stereo fully off?") },
-        text = { Text("It will leave Wi-Fi, so this app can't turn it back on. Use the stereo's power button or its remote to switch it on again.\n\nTip: a short tap on Power puts it in standby, which the app can wake.") },
+        title = { Text(tx("poweroff_title")) },
+        text = { Text(tx("poweroff_text")) },
         confirmButton = {
-            Button(onClick = { powerOff = false; vm.power("OFF") }, colors = ButtonDefaults.buttonColors(containerColor = C.Danger)) { Text("Turn off") }
+            Button(onClick = { powerOff = false; vm.power("OFF") }, colors = ButtonDefaults.buttonColors(containerColor = C.Danger)) { Text(tx("turn_off")) }
         },
-        dismissButton = { TextButton(onClick = { powerOff = false }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { powerOff = false }) { Text(tx("cancel")) } },
     )
 }
