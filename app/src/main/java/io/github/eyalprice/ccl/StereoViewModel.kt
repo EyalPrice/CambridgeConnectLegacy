@@ -84,7 +84,8 @@ data class StereoState(
 }
 
 /** Holds the connection to one stereo and keeps its state fresh by polling. */
-private const val BALANCE_UNIT = 16
+/** One balance step = 1 dB (the stereo uses 1/256 dB units and works in whole decibels). */
+private const val BALANCE_UNIT = 256
 
 class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -396,7 +397,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(inputs = ordered(inputs), volumeMax = max, volumeHard = hard, about = about,
                 bassMin = limInt("bassMin"), bassMax = limInt("bassMax"),
                 trebleMin = limInt("trebleMin"), trebleMax = limInt("trebleMax"),
-                balanceMin = limInt("balMin"), balanceMax = limInt("balMax"),
+                balanceMin = limInt("balMinDb"), balanceMax = limInt("balMaxDb"),
                 languages = names.zip(codes), language = language,
                 brightness = prefs.getInt("brightness", 2),
                 widgetInputs = (prefs.getString("widgetInputs", null) ?: "0,24,6").split(',')
@@ -419,9 +420,9 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 treble = out("GetToneCtrlTreble")?.toIntOrNull(),
                 balance = out("GetBalanceDB")?.toIntOrNull()?.let { raw ->
                     // Stereo reports 1/256 dB units; show it as steps, preferring the app's own value when they agree.
-                    val saved = prefs.getInt("balance", 0)
+                    val saved = prefs.getInt("balanceDb", 0)
                     val fromStereo = Math.round(raw.toFloat() / BALANCE_UNIT)
-                    if (Math.abs(saved * BALANCE_UNIT - raw) < 256) saved else fromStereo
+                    if (Math.abs(saved * BALANCE_UNIT - raw) < BALANCE_UNIT / 2) saved else fromStereo
                 },
                 phaseInverted = out("GetAudioPhaseInverted")?.let { v -> v == "1" || v.equals("true", true) },
                 filter = out("GetAudioFilter"),
@@ -804,7 +805,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             when (name) {
                 "bassMax" -> it.copy(bassMax = v); "bassMin" -> it.copy(bassMin = v)
                 "trebleMax" -> it.copy(trebleMax = v); "trebleMin" -> it.copy(trebleMin = v)
-                "balMax" -> it.copy(balanceMax = v); "balMin" -> it.copy(balanceMin = v)
+                "balMaxDb" -> it.copy(balanceMax = v); "balMinDb" -> it.copy(balanceMin = v)
                 else -> it
             }
         }
@@ -825,22 +826,22 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBalance(steps: Int) {
         _state.update { it.copy(balance = steps) }
-        prefs.edit().putInt("balance", steps).apply()
+        prefs.edit().putInt("balanceDb", steps).apply()
         latestRequest["balance"] = steps
         sendBusy("balance", "SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString()) {
             if (latestRequest["balance"] != steps || steps == 0) return@sendBusy
             val raw = out("GetBalanceDB")?.toIntOrNull() ?: return@sendBusy
             val want = steps * BALANCE_UNIT
-            // The stereo rounds what it reports to about 1 dB (256 units), so only a bigger gap means a limit.
-            if (Math.abs(want - raw) < 256) return@sendBusy
+            // Allow for rounding: only a gap of half a step or more means a limit.
+            if (Math.abs(want - raw) < BALANCE_UNIT / 2) return@sendBusy
             val at = Math.round(raw.toFloat() / BALANCE_UNIT)
             val learnRight = steps > 0 && at < steps && _state.value.balanceMax == null
             val learnLeft = steps < 0 && at > steps && _state.value.balanceMin == null
             if (!learnRight && !learnLeft) return@sendBusy
             Thread.sleep(800)
             if (latestRequest["balance"] != steps || out("GetBalanceDB")?.toIntOrNull() != raw) return@sendBusy
-            if (learnRight) saveLimit("balMax", at) else saveLimit("balMin", at)
-            prefs.edit().putInt("balance", at).apply()
+            if (learnRight) saveLimit("balMaxDb", at) else saveLimit("balMinDb", at)
+            prefs.edit().putInt("balanceDb", at).apply()
             _state.update { it.copy(balance = at) }
         }
     }

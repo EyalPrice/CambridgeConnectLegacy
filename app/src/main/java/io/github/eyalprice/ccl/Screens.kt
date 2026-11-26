@@ -603,7 +603,7 @@ fun SoundScreen(st: StereoState, vm: StereoViewModel) {
                     busy = "bass" in st.busy, minusEnabled = st.bassMin == null || b > st.bassMin, plusEnabled = st.bassMax == null || b < st.bassMax) }
                 st.treble?.let { t -> Stepper("Treble", signed(t), { vm.setTone("treble", t - 1) }, { vm.setTone("treble", t + 1) },
                     busy = "treble" in st.busy, minusEnabled = st.trebleMin == null || t > st.trebleMin, plusEnabled = st.trebleMax == null || t < st.trebleMax) }
-                st.balance?.let { b -> Stepper("Balance", if (b == 0) "Centre" else if (b < 0) "L ${-b}" else "R $b", { vm.balanceStep(-1) }, { vm.balanceStep(1) },
+                st.balance?.let { b -> Stepper("Balance", if (b == 0) "Centre" else if (b < 0) "L ${-b} dB" else "R $b dB", { vm.balanceStep(-1) }, { vm.balanceStep(1) },
                     minusLabel = "L", plusLabel = "R", busy = "balance" in st.busy,
                     minusEnabled = st.balanceMin == null || b > st.balanceMin, plusEnabled = st.balanceMax == null || b < st.balanceMax) }
                 Text("The app learns this stereo's limits the first time it stops short, then greys out the button at that limit.",
