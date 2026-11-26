@@ -636,6 +636,12 @@ private fun signed(v: Int) = if (v > 0) "+$v" else "$v"
 fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update: String?, onCheckUpdate: () -> Unit) {
     val ctx = LocalContext.current
     var langDialog by remember { mutableStateOf(false) }
+    var forgetDialog by remember { mutableStateOf(false) }
+    if (forgetDialog) AlertDialog(onDismissRequest = { forgetDialog = false },
+        title = { Text("Forget learned limits?") },
+        text = { Text("The app forgets the bass, treble, balance and volume limits it learned for this stereo, and learns them again as you use it.") },
+        confirmButton = { TextButton(onClick = { forgetDialog = false; vm.forgetLimits() }) { Text("Forget") } },
+        dismissButton = { TextButton(onClick = { forgetDialog = false }) { Text("Cancel") } })
     fun open(url: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     fun issue(kind: String) {
         val body = "**App:** $version\n**Android:** ${Build.VERSION.RELEASE} (${Build.MANUFACTURER} ${Build.MODEL})\n" +
@@ -669,6 +675,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
             RowItem("Updates", update ?: "Check now") {
                 if (update != null && update.startsWith("New")) open("https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest") else onCheckUpdate()
             }
+            RowItem("Forget learned limits", "Bass, treble, balance, volume") { forgetDialog = true }
             RowItem("Change stereo") { vm.forget() }
         }
         SectionLabel("Feedback")

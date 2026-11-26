@@ -764,12 +764,35 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         sendBusy(which, action, arg to v.toString()) {
             loadSound()
             if (latestRequest[which] != v) return@sendBusy   // a newer press is on its way; judge that one instead
-            val got = (if (which == "bass") _state.value.bass else _state.value.treble) ?: return@sendBusy
             val key = if (which == "bass") "bass" else "treble"
-            when {
-                v > got -> saveLimit(key + "Max", got)   // asked for more, stereo stopped lower: that's its top
-                v < got -> saveLimit(key + "Min", got)   // asked for less, stereo stopped higher: that's its bottom
+            val read = { (if (which == "bass") _state.value.bass else _state.value.treble) }
+            val got = read() ?: return@sendBusy
+            if (got == v) return@sendBusy
+            // Only learn a limit on a side that has none yet, only away from zero, and only if the stereo
+            // still says the same a moment later (a slow stereo can briefly report the old value).
+            val learnTop = v > 0 && got < v && hi == null
+            val learnBottom = v < 0 && got > v && lo == null
+            if (!learnTop && !learnBottom) return@sendBusy
+            Thread.sleep(800)
+            if (latestRequest[which] != v) return@sendBusy
+            loadSound()
+            if (read() != got) return@sendBusy
+            if (learnTop) saveLimit(key + "Max", got) else saveLimit(key + "Min", got)
+        }
+    }
+
+    /** Forgets every limit learned for the connected stereo; they are learned again as the stereo is used. */
+    fun forgetLimits() {
+        val e = prefs.edit()
+        prefs.all.keys.filter { it.startsWith(stereoKey) }.forEach { e.remove(it) }
+        e.apply()
+        viewModelScope.launch(Dispatchers.IO) {
+            val reported = out("GetVolumeMax")?.toIntOrNull()?.takeIf { it > 0 }
+            _state.update {
+                it.copy(bassMin = null, bassMax = null, trebleMin = null, trebleMax = null, balanceMin = null, balanceMax = null,
+                    volumeMax = reported ?: maxOf(40, it.volume), volumeHard = reported != null)
             }
+            toast("Learned limits forgotten. The app will learn them again as you use the stereo.")
         }
     }
 
@@ -811,8 +834,12 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             // The stereo rounds what it reports to about 1 dB (256 units), so only a bigger gap means a limit.
             if (Math.abs(want - raw) < 256) return@sendBusy
             val at = Math.round(raw.toFloat() / BALANCE_UNIT)
-            if (steps > 0 && at < steps) saveLimit("balMax", at)
-            if (steps < 0 && at > steps) saveLimit("balMin", at)
+            val learnRight = steps > 0 && at < steps && _state.value.balanceMax == null
+            val learnLeft = steps < 0 && at > steps && _state.value.balanceMin == null
+            if (!learnRight && !learnLeft) return@sendBusy
+            Thread.sleep(800)
+            if (latestRequest["balance"] != steps || out("GetBalanceDB")?.toIntOrNull() != raw) return@sendBusy
+            if (learnRight) saveLimit("balMax", at) else saveLimit("balMin", at)
             prefs.edit().putInt("balance", at).apply()
             _state.update { it.copy(balance = at) }
         }
