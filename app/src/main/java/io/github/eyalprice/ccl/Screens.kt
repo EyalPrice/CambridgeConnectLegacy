@@ -647,7 +647,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
     fun issue(kind: String) {
         val body = "**App:** $version\n**Android:** ${Build.VERSION.RELEASE} (${Build.MANUFACTURER} ${Build.MODEL})\n" +
             "**Stereo:** ${st.model} ${st.about["Firmware"] ?: ""}\n\n" +
-            (if (kind == "bug") "**What happened:**\n\n**What you expected:**\n\n(Please attach the diagnostic report: Settings → Report a problem → Create diagnostic report → Share bug report.)" else "**Your idea:**\n")
+            (if (kind == "bug") "**What happened:**\n\n**What you expected:**\n\n(Please attach the diagnostic report: Settings → Report a problem → Create diagnostic report → Share report.)" else "**Your idea:**\n")
         open("https://github.com/EyalPrice/CambridgeConnectLegacy/issues/new?labels=$kind&title=&body=" + Uri.encode(body))
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
@@ -830,12 +830,12 @@ private fun ReportProblem(vm: StereoViewModel, version: String) {
                     Text(r, color = C.Text, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                 }
             }
-            GhostButton("Share bug report", {
+            GhostButton("Share report", {
                 val i = Intent(Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(Intent.EXTRA_SUBJECT, "Cambridge Connect Legacy diagnostic report")
                     .putExtra(Intent.EXTRA_STREAM, ReportProvider.uri())
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                ctx.startActivity(Intent.createChooser(i, "Share bug report"))
+                ctx.startActivity(Intent.createChooser(i, "Share report"))
             }, Modifier.fillMaxWidth().padding(top = 10.dp), enabled = report != null && !busy)
             val note = androidx.compose.ui.text.buildAnnotatedString {
                 append("To report a bug, go to the app's ")

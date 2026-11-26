@@ -350,7 +350,9 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
 @Composable
 fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.height(48.dp), shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, C.Line2), colors = ButtonDefaults.outlinedButtonColors(containerColor = C.Surface, contentColor = C.Text)) {
+        border = BorderStroke(1.dp, if (enabled) C.Line2 else C.Line2.copy(alpha = 0.4f)),
+        colors = ButtonDefaults.outlinedButtonColors(containerColor = C.Surface, contentColor = C.Text,
+            disabledContainerColor = C.Surface.copy(alpha = 0.5f), disabledContentColor = C.Muted.copy(alpha = 0.55f))) {
         Text(text, fontSize = 14.sp)
     }
 }

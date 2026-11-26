@@ -223,7 +223,10 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     private fun log(line: String) {
         if (line.startsWith("GetPowerState") || line.startsWith("GetVolume") || line.startsWith("GetMute") ||
             line.startsWith("GetTransportInfo") || line.startsWith("GetAudioSourceByNumber") ||
-            line.startsWith("GetPlaybackDetails") || line.startsWith("GetSpotifyPlaybackPosition")) return // skip routine polling
+            line.startsWith("GetPlaybackDetails") || line.startsWith("GetSpotifyPlaybackPosition") ||
+            // Sound-screen re-reads (every 1.5 s while it is open)
+            (soundVisible && (line.startsWith("GetToneCtrl") || line.startsWith("GetBalanceDB") ||
+                line.startsWith("GetAudioPhaseInverted") || line.startsWith("GetAudioFilter")))) return // skip routine polling
         synchronized(debug) {
             debug.addLast(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date()) + " " + line)
             while (debug.size > 400) debug.removeFirst()

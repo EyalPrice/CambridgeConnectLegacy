@@ -299,7 +299,9 @@ public final class StereoCheck {
             default:
                 try {
                     int v = Integer.parseInt(orig);
-                    return String.valueOf(v > 0 ? v - 1 : v + 1);
+                    // Balance is in 1/256 dB and the stereo works in whole dB, so test with a 1 dB step.
+                    int step = t.setter.equals("SetBalanceDB") ? 256 : 1;
+                    return String.valueOf(v > 0 ? v - step : v + step);
                 } catch (NumberFormatException e) {
                     return orig;
                 }
@@ -349,7 +351,11 @@ public final class StereoCheck {
             m.appendReplacement(out, Matcher.quoteReplacement(m.group(1) + masked));
         }
         m.appendTail(out);
-        return out.toString();
+        s = out.toString();
+        // The stereo's web page shows its unit ID (the serial); Spotify replies name the user's Spotify account.
+        s = s.replaceAll("(Unit ID:\\s*)\\S+", "$1<hidden>");
+        s = s.replaceAll("(?s)<spotify-source>.*?</spotify-source>", "<spotify-source><hidden></spotify-source>");
+        return s;
     }
 
     private static String cut(String s, int max) {
