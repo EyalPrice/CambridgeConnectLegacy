@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
@@ -159,7 +160,15 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) { connectNow(location) }
     }
 
-    private suspend fun connectNow(location: String): Boolean = withContext(Dispatchers.IO) {
+    /** One connect at a time: the app, widget and lock screen can all ask at start-up; they share one connection. */
+    private val connectLock = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun connectNow(location: String): Boolean = connectLock.withLock {
+        if (device != null && prefs.getString("location", null) == location) return@withLock true
+        doConnect(location)
+    }
+
+    private suspend fun doConnect(location: String): Boolean = withContext(Dispatchers.IO) {
         _state.update { it.copy(conn = Conn.CONNECTING) }
         try {
             val d = Upnp.loadDevice(location)
