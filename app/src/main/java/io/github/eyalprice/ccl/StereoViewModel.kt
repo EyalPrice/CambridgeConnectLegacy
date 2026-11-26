@@ -763,6 +763,30 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val latestRequest = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val settleGen = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val soundLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * For + / − controls: the screen changes on every press, but the stereo is only told once the user has
+     * stopped pressing for half a second. Until then (and until the stereo has answered) the control is busy,
+     * so readings from the stereo can't make the number jump. A press during sending is sent right after.
+     */
+    private fun sendSettled(key: String, block: suspend () -> Unit) {
+        val g = (settleGen[key] ?: 0) + 1
+        settleGen[key] = g
+        _state.update { it.copy(busy = it.busy + key) }
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(500)
+            if (settleGen[key] != g) return@launch          // the user pressed again; that press will send
+            try {
+                soundLock.lock()
+                try { if (settleGen[key] == g) block() } finally { soundLock.unlock() }
+            } finally {
+                if (settleGen[key] == g) _state.update { it.copy(busy = it.busy - key) }
+            }
+            if (settleGen[key] == g) refreshOnce()
+        }
+    }
 
     /** Bass or treble. Stops at this stereo's learned limits; with none learned yet, any value is tried. */
     fun setTone(which: String, value: Int) {
@@ -774,21 +798,23 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         latestRequest[which] = v
         val action = if (which == "bass") "SetToneCtrlBass" else "SetToneCtrlTreble"
         val arg = if (which == "bass") "NewToneCtrlBassValue" else "NewToneCtrlTrebleValue"
-        sendBusy(which, action, arg to v.toString()) {
-            if (latestRequest[which] != v) return@sendBusy   // a newer press is on its way; judge that one instead
+        sendSettled(which) {
+            val sent = callBlocking(action, arg to v.toString())
+            if (sent == null || !sent.ok()) { toast("The stereo didn't accept “$action”."); return@sendSettled }
+            if (latestRequest[which] != v) return@sendSettled   // a newer press is on its way; judge that one instead
             val key = if (which == "bass") "bass" else "treble"
             // Read the stereo directly (the screen keeps showing the requested value while this control is busy).
             val read = { out(if (which == "bass") "GetToneCtrlBass" else "GetToneCtrlTreble")?.toIntOrNull() }
-            val got = read() ?: return@sendBusy
-            if (got == v) return@sendBusy
+            val got = read() ?: return@sendSettled
+            if (got == v) return@sendSettled
             // Only learn a limit on a side that has none yet, only away from zero, and only if the stereo
             // still says the same a moment later (a slow stereo can briefly report the old value).
             val learnTop = v > 0 && got < v && hi == null
             val learnBottom = v < 0 && got > v && lo == null
-            if (!learnTop && !learnBottom) return@sendBusy
-            Thread.sleep(800)
-            if (latestRequest[which] != v) return@sendBusy
-            if (read() != got) return@sendBusy
+            if (!learnTop && !learnBottom) return@sendSettled
+            delay(800)
+            if (latestRequest[which] != v) return@sendSettled
+            if (read() != got) return@sendSettled
             if (learnTop) saveLimit(key + "Max", got) else saveLimit(key + "Min", got)
             _state.update { if (which == "bass") it.copy(bass = got) else it.copy(treble = got) }
         }
@@ -840,7 +866,10 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(balance = steps) }
         prefs.edit().putInt("balanceDb", steps).apply()
         latestRequest["balance"] = steps
-        sendBusy("balance", "SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString())
+        sendSettled("balance") {
+            val sent = callBlocking("SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString())
+            if (sent == null || !sent.ok()) toast("The stereo didn't accept the balance change.")
+        }
     }
 
     fun resetTone() {
