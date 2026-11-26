@@ -229,7 +229,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             line.startsWith("GetPlaybackDetails") || line.startsWith("GetSpotifyPlaybackPosition")) return // skip routine polling
         synchronized(debug) {
             debug.addLast(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date()) + " " + line)
-            while (debug.size > 120) debug.removeFirst()
+            while (debug.size > 400) debug.removeFirst()
         }
     }
 
@@ -256,6 +256,64 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(busy = it.busy - key) }
             }
         }
+    }
+
+    // ------------------------------------------------------------ diagnostic report (Settings → Report a problem)
+
+    /**
+     * Builds one detailed report: phone and app, the stereo and every command it offers, a full read of
+     * what it reports, a short safe change test (restored afterwards), stream information, the app's own
+     * saved state, and the recent command log. Saved for sharing; network addresses and most of the serial are hidden.
+     */
+    suspend fun createDiagnosticReport(version: String, progress: (String) -> Unit): String = withContext(Dispatchers.IO) {
+        val d = device ?: return@withContext "Not connected to a stereo."
+        val st = _state.value
+        val check = StereoCheck(d, "Cambridge Connect Legacy $version")
+        val p = StereoCheck.Progress { progress(it) }
+        val sb = StringBuilder()
+        try {
+            progress("Reading everything the stereo reports…")
+            check.runReadTest(p)
+            progress("Capturing what's playing now…")
+            check.captureSource("Current: ${st.sourceName}", p)
+            progress("Testing settings (each is put back)…")
+            check.runChangeTest(p)
+        } catch (e: Exception) {
+            sb.append("!! Checks stopped early: $e\n")
+        } finally {
+            check.releaseNavigator()
+        }
+        sb.append(check.buildReport())
+
+        progress("Adding the app's own information…")
+        sb.append("\n##### 4. APP STATE\n")
+        sb.append("Connection: ${st.conn} · power=${st.power} · source=${st.sourceNumber} (${st.sourceName}) · volume=${st.volume}/${st.volumeMax}" +
+            (if (st.volumeHard) " (top certain)" else " (top not certain)") + " · muted=${st.muted}\n")
+        sb.append("Sound: bass=${st.bass} treble=${st.treble} balance=${st.balance} phaseInverted=${st.phaseInverted} filter=${st.filter}\n")
+        sb.append("Learned limits: bass ${st.bassMin}..${st.bassMax} · treble ${st.trebleMin}..${st.trebleMax} · balance ${st.balanceMin}..${st.balanceMax}\n")
+        sb.append("Inputs (tile order): " + st.inputs.joinToString { "${it.number}=${it.name}" } + "\n")
+        sb.append("Widget inputs: ${st.widgetInputs}\n")
+        sb.append("Presets: ${st.presets.count { it.title.isNotBlank() }} of ${st.presetCount} used · last preset started: ${st.lastPreset}\n")
+        sb.append("Playback: state=${st.playback.state} transport=${st.transport} title=${st.playback.title} format=${st.playback.format} spotifyActive=${st.playback.spotifyActive}\n")
+        sb.append("Display: brightness=${st.brightness} language=${st.language}\n")
+        sb.append("About: " + st.about.filterKeys { it != "Serial number" }.entries.joinToString { "${it.key}=${it.value}" } + "\n")
+
+        sb.append("\n##### 5. COMMANDS THE STEREO OFFERS (${d.services.sumOf { it.actions.size }})\n")
+        d.services.forEach { sv ->
+            sb.append("[${sv.shortType()}]" + (sv.error?.let { " error: $it" } ?: "") + "\n")
+            sb.append(sv.actions.joinToString(", ") { a -> a.name + a.inArgs().joinToString(",", "(", ")") { it.name } } + "\n")
+        }
+
+        progress("Checking stream and web page information…")
+        sb.append("\n##### 6. STREAMS AND WEB PAGE\n")
+        sb.append(try { streamProbe() } catch (e: Exception) { "failed: $e" }).append('\n')
+
+        sb.append("\n##### 7. RECENT ACTIVITY (oldest first, routine polling left out)\n")
+        sb.append(synchronized(debug) { debug.joinToString("\n") }).append('\n')
+
+        val text = StereoCheck.sanitize(sb.toString(), d.host())
+        java.io.File(getApplication<android.app.Application>().cacheDir, ReportProvider.FILE_NAME).writeText(text)
+        text
     }
 
     // ------------------------------------------------------------ custom station test (Pro)

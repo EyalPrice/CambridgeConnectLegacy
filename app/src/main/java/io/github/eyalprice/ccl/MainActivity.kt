@@ -35,10 +35,10 @@ import java.net.URL
 
 enum class Tab(val label: String, val title: String) {
     PLAY("Playing", "Now Playing"), INPUTS("Inputs", "Inputs"), RADIO("Radio", "Radio"),
-    MUSIC("Music", "Music"), PRO("Pro", "Pro")
+    MUSIC("Music", "Music")
 }
 
-enum class Page(val title: String) { SOUND("Sound"), SETTINGS("Settings"), QUEUE("Queue"), CHECK("Stereo check"), EXPLORER("Commands"), REMOTE("Remote"), STREAM("Custom station test") }
+enum class Page(val title: String) { SOUND("Sound"), SETTINGS("Settings"), QUEUE("Queue") }
 
 class MainActivity : ComponentActivity() {
 
@@ -135,7 +135,6 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
         }
     }
     LaunchedEffect(st.message) { st.message?.let { snack.showSnackbar(it); vm.toast(null) } }
-    LaunchedEffect(st.pro) { if (!st.pro && tab == Tab.PRO) tab = Tab.PLAY }
     BackHandler(enabled = page != null) { page = null }
     BackHandler(enabled = page == null && tab != Tab.PLAY) { tab = Tab.PLAY }
 
@@ -167,16 +166,11 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
                     Page.SOUND -> SoundScreen(st, vm)
                     Page.SETTINGS -> SettingsScreen(st, vm, version, updateStatus) { checkTick++ }
                     Page.QUEUE -> QueueScreen(st, vm)
-                    Page.CHECK -> CheckScreen(vm, version)
-                    Page.EXPLORER -> ExplorerScreen(vm)
-                    Page.REMOTE -> RemoteScreen(vm)
-                    Page.STREAM -> StreamTestScreen(vm)
                     null -> when (tab) {
                         Tab.PLAY -> NowPlayingScreen(st, vm, onInputs = { tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE })
                         Tab.INPUTS -> InputsScreen(st, vm) { }
                         Tab.RADIO -> RadioScreen(st, vm) { }
                         Tab.MUSIC -> MusicScreen(vm, onPlaying = { tab = Tab.PLAY }, onQueue = { page = Page.QUEUE })
-                        Tab.PRO -> ProScreen(st, vm, onCheck = { page = Page.CHECK }, onExplorer = { page = Page.EXPLORER }, onRemote = { page = Page.REMOTE }, onStream = { page = Page.STREAM })
                     }
                 }
             }
@@ -189,7 +183,7 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
                 MiniPlayer(st, t, onOpen = { page = null; tab = Tab.PLAY }, vm = vm)
             }
             NavigationBar(containerColor = C.Bar) {
-                Tab.entries.filter { it != Tab.PRO || st.pro }.forEach { t ->
+                Tab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = page == null && tab == t,
                         onClick = { page = null; tab = t },
@@ -199,7 +193,6 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
                                 Tab.INPUTS -> Icons.Outlined.GridView
                                 Tab.RADIO -> Icons.Outlined.Radio
                                 Tab.MUSIC -> Icons.Outlined.LibraryMusic
-                                Tab.PRO -> Icons.Outlined.Tune
                             }, t.label)
                         },
                         label = { Text(t.label) },

@@ -15,7 +15,7 @@ import java.io.FileNotFoundException;
 public class ReportProvider extends ContentProvider {
 
     public static final String AUTHORITY = "io.github.eyalprice.ccl.report";
-    public static final String FILE_NAME = "stereo-check-report.txt";
+    public static final String FILE_NAME = "ccl-diagnostic-report.txt";
 
     public static File file(android.content.Context ctx) {
         return new File(ctx.getCacheDir(), FILE_NAME);

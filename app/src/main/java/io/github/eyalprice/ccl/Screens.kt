@@ -639,13 +639,10 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
     fun issue(kind: String) {
         val body = "**App:** $version\n**Android:** ${Build.VERSION.RELEASE} (${Build.MANUFACTURER} ${Build.MODEL})\n" +
             "**Stereo:** ${st.model} ${st.about["Firmware"] ?: ""}\n\n" +
-            (if (kind == "bug") "**What happened:**\n\n**What you expected:**\n\n(Attach the Stereo check report if you can.)" else "**Your idea:**\n")
+            (if (kind == "bug") "**What happened:**\n\n**What you expected:**\n\n(Please attach the diagnostic report: Settings → Report a problem → Create diagnostic report → Share bug report.)" else "**Your idea:**\n")
         open("https://github.com/EyalPrice/CambridgeConnectLegacy/issues/new?labels=$kind&title=&body=" + Uri.encode(body))
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Panel(Modifier.fillMaxWidth(), active = st.pro) {
-            SwitchRow("Pro mode", "Adds a Pro tab: Stereo check, every stereo command, network devices.", st.pro) { vm.setPro(it) }
-        }
         SectionLabel("Stereo")
         Panel(Modifier.fillMaxWidth()) {
             RowItem("Stereo name", st.name)
@@ -690,6 +687,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
                 else Text("Donation page coming soon.", color = C.Muted, fontSize = 13.sp)
             }
         }
+        ReportProblem(vm, version)
         SectionLabel("About the app")
         Panel(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -716,207 +714,6 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
             }
             }
         }, confirmButton = { TextButton(onClick = { langDialog = false }) { Text("Close") } })
-}
-
-// ====================================================================== Pro
-
-@Composable
-fun ProScreen(st: StereoState, vm: StereoViewModel, onCheck: () -> Unit, onExplorer: () -> Unit, onRemote: () -> Unit, onStream: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Panel(Modifier.fillMaxWidth().clickable(onClick = onCheck), active = true) {
-            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.FactCheck, null, tint = C.Accent)
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Stereo check", color = C.Text, fontWeight = FontWeight.SemiBold)
-                    Text("Test every feature and share a report", color = C.Muted, fontSize = 12.sp)
-                }
-                Text("›", color = C.Muted)
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Panel(Modifier.fillMaxWidth().clickable(onClick = onExplorer)) {
-            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Terminal, null, tint = C.Accent)
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Command explorer", color = C.Text, fontWeight = FontWeight.SemiBold)
-                    val n = vm.device?.services?.sumOf { it.actions.size } ?: 0
-                    Text("All $n commands your stereo offers", color = C.Muted, fontSize = 12.sp)
-                }
-                Text("›", color = C.Muted)
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Panel(Modifier.fillMaxWidth().clickable(onClick = onRemote)) {
-            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.SettingsRemote, null, tint = C.Accent)
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Virtual remote", color = C.Text, fontWeight = FontWeight.SemiBold)
-                    Text("The same keys as the stereo's handset", color = C.Muted, fontSize = 12.sp)
-                }
-                Text("›", color = C.Muted)
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Panel(Modifier.fillMaxWidth().clickable(onClick = onStream)) {
-            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Link, null, tint = C.Accent)
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Custom station test", color = C.Text, fontWeight = FontWeight.SemiBold)
-                    Text("Can this stereo play a radio URL you type in?", color = C.Muted, fontSize = 12.sp)
-                }
-                Text("›", color = C.Muted)
-            }
-        }
-        SectionLabel("Network devices")
-        GhostButton("Search the network", { vm.search() }, Modifier.fillMaxWidth())
-        if (st.searchInfo.isNotBlank()) Text(st.searchInfo, color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-        st.found.forEach { f ->
-            Text("${f.name.ifBlank { "(no name)" }} · ${f.model}" + if (f.cambridge) "  ★ Cambridge" else "",
-                color = if (f.cambridge) C.Accent else C.Text, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
-        }
-        SectionLabel("Troubleshooting")
-        val ctx = LocalContext.current
-        GhostButton("Share debug log", { shareText(ctx, "Cambridge Connect Legacy debug log", vm.debugLog()) }, Modifier.fillMaxWidth())
-        Text("Recent commands and the stereo's replies, without your network addresses.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-        SectionLabel("Zones")
-        Text("This stereo has a single zone.", color = C.Muted, fontSize = 13.sp)
-        Spacer(Modifier.height(24.dp))
-    }
-}
-
-@Composable
-fun ExplorerScreen(vm: StereoViewModel) {
-    val scope = rememberCoroutineScope()
-    var filter by remember { mutableStateOf("") }
-    var run by remember { mutableStateOf<Pair<Upnp.Service, Upnp.Action>?>(null) }
-    var result by remember { mutableStateOf<String?>(null) }
-    val dev = vm.device ?: return
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        OutlinedTextField(filter, { filter = it }, label = { Text("Filter commands") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        LazyColumn(Modifier.padding(top = 8.dp)) {
-            dev.services.forEach { s ->
-                val acts = s.actions.filter { filter.isBlank() || it.name.contains(filter, true) }
-                if (acts.isNotEmpty()) item { SectionLabel(s.shortType()) }
-                items(acts) { a ->
-                    val read = StereoCheck.isRead(a.name)
-                    val blocked = a.name == "DoUpgrade"
-                    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(enabled = !blocked) { run = s to a },
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(a.name, color = if (blocked) C.Muted else C.Text, fontFamily = FontFamily.Monospace, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        Text(if (blocked) "disabled" else if (read) "read" else "change", fontSize = 11.sp,
-                            color = if (blocked) C.Muted else if (read) C.Green else C.Accent)
-                    }
-                }
-            }
-        }
-    }
-    run?.let { (s, a) ->
-        val values = remember(a) {
-            mutableStateMapOf<String, String>().apply {
-                a.inArgs().forEach { g ->
-                    put(g.name, when (g.name) {
-                        "InstanceID" -> "0"; "Channel" -> "Master"; "NavigatorId" -> vm.navId ?: ""; "Speed" -> "1"
-                        else -> g.allowed.firstOrNull() ?: ""
-                    })
-                }
-            }
-        }
-        AlertDialog(onDismissRequest = { run = null }, title = { Text(a.name) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (!StereoCheck.isRead(a.name)) Text("This command changes something on the stereo.", color = C.Accent, fontSize = 13.sp)
-                    a.inArgs().forEach { g ->
-                        OutlinedTextField(values[g.name] ?: "", { values[g.name] = it }, singleLine = true,
-                            label = { Text(g.name) },
-                            supportingText = {
-                                val hint = (if (g.allowed.isNotEmpty()) "Allowed: " + g.allowed.joinToString(", ") else "") +
-                                    (if (g.range.isNotEmpty()) " Range: " + g.range else "")
-                                if (hint.isNotBlank()) Text(hint)
-                            })
-                    }
-                    if (a.inArgs().isEmpty()) Text("No inputs needed.", color = C.Muted)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val args = LinkedHashMap(values.toMap())
-                    run = null
-                    scope.launch(Dispatchers.IO) {
-                        val text = try {
-                            val r = Upnp.call(s, a.name, args, 30000)
-                            (if (r.ok()) "OK" else "Error (HTTP ${r.httpCode})") + "\n\n" +
-                                r.out.entries.joinToString("\n") { "${it.key} = ${it.value}" } +
-                                (if (!r.ok() || r.out.isEmpty()) "\n\n" + r.body.take(3000) else "")
-                        } catch (e: Exception) { "Failed: ${e.message}" }
-                        result = StereoCheck.sanitize(text, dev.host())
-                    }
-                }) { Text("Run") }
-            },
-            dismissButton = { TextButton(onClick = { run = null }) { Text("Cancel") } })
-    }
-    result?.let { r ->
-        AlertDialog(onDismissRequest = { result = null }, title = { Text("Reply") },
-            text = { Text(r, fontFamily = FontFamily.Monospace, fontSize = 12.sp, modifier = Modifier.verticalScroll(rememberScrollState())) },
-            confirmButton = { TextButton(onClick = { result = null }) { Text("Close") } })
-    }
-}
-
-@Composable
-fun CheckScreen(vm: StereoViewModel, version: String) {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val dev = vm.device ?: return
-    val check = remember(dev) { StereoCheck(dev, "Cambridge Connect Legacy $version") }
-    var progress by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var label by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf(false) }
-    fun job(block: () -> Unit) {
-        if (busy) return
-        busy = true
-        scope.launch(Dispatchers.IO) {
-            try { block() } catch (e: Exception) { progress = "Stopped: $e" }
-            busy = false
-        }
-    }
-    val p = StereoCheck.Progress { progress = it }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Text("Tests what your stereo supports and builds a report. Network addresses, MAC address and most of the serial number are removed.",
-            color = C.Muted, fontSize = 13.sp)
-        if (progress.isNotBlank()) Text(progress, color = C.Accent, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
-        SectionLabel("1 · Read test")
-        PrimaryButton("Run read test", { job { check.runReadTest(p) } }, enabled = !busy)
-        SectionLabel("2 · Source tour")
-        Text("Switch the stereo to a source, start something playing, name it and tap Capture. Repeat for each source.", color = C.Muted, fontSize = 13.sp)
-        OutlinedTextField(label, { label = it }, label = { Text("Source name, e.g. Spotify") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
-        PrimaryButton("Capture this source", {
-            val n = label.ifBlank { "Source ${check.tourCount() + 1}" }
-            label = ""
-            job { check.captureSource(n, p) }
-        }, enabled = !busy)
-        SectionLabel("3 · Safe change test (optional)")
-        Text("Changes each setting one step, reads it back and restores it. Never: full off, firmware update, deleting presets.", color = C.Muted, fontSize = 13.sp)
-        GhostButton("Run safe change test", { confirm = true }, Modifier.fillMaxWidth().padding(top = 8.dp))
-        SectionLabel("Report")
-        PrimaryButton("Share report", {
-            job {
-                check.releaseNavigator()
-                val f = File(ctx.cacheDir, ReportProvider.FILE_NAME)
-                f.writeText(check.buildReport())
-                val i = Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_SUBJECT, "Stereo check report – ${dev.friendlyName}")
-                    .putExtra(Intent.EXTRA_TEXT, "Stereo check report from Cambridge Connect Legacy (attached).")
-                    .putExtra(Intent.EXTRA_STREAM, ReportProvider.uri())
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                ctx.startActivity(Intent.createChooser(i, "Share report").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-        }, enabled = !busy)
-        Spacer(Modifier.height(24.dp))
-    }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Run the safe change test?") },
-        text = { Text("Settings change for a moment and are then restored. You may hear the volume or mute change briefly.") },
-        confirmButton = { TextButton(onClick = { confirm = false; job { check.runChangeTest(p) } }) { Text("Run") } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } })
 }
 
 // ====================================================================== First start
@@ -985,103 +782,60 @@ fun WelcomeScreen(st: StereoState, vm: StereoViewModel) {
     }
 }
 
+// ====================================================================== Report a problem (Settings)
 
-// ====================================================================== Virtual remote
+private const val WEBSITE = "https://eyalprice.github.io/CambridgeConnectLegacy/#community"
 
+/** Closed by default. Creates one detailed diagnostic report the user can read, share, and attach to a bug report. */
 @Composable
-fun RemoteScreen(vm: StereoViewModel) {
-    val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf("Keys are sent exactly like the stereo's handset.") }
-    fun key(k: String) { scope.launch { status = "Sending $k…"; status = vm.pressKey(k) } }
-    @Composable
-    fun K(label: String, k: String, modifier: Modifier = Modifier) {
-        Box(modifier.height(52.dp).clip(RoundedCornerShape(12.dp)).background(C.Line).clickable { key(k) },
-            contentAlignment = Alignment.Center) { Text(label, color = C.Text, fontSize = 14.sp) }
-    }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Text(status, color = C.Accent, fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
-        Panel(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    K("Info", "INFO", Modifier.weight(1f)); K("Home", "HOME", Modifier.weight(1f)); K("Menu", "MENU", Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(16.dp))
-                Box(Modifier.size(210.dp).clip(CircleShape).background(C.Surface2).border(1.dp, C.Line2, CircleShape)) {
-                    IconButton({ key("UP") }, Modifier.align(Alignment.TopCenter).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = C.Text) }
-                    IconButton({ key("DOWN") }, Modifier.align(Alignment.BottomCenter).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = C.Text) }
-                    IconButton({ key("LEFT") }, Modifier.align(Alignment.CenterStart).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowLeft, "Left", tint = C.Text) }
-                    IconButton({ key("RIGHT") }, Modifier.align(Alignment.CenterEnd).padding(6.dp).size(52.dp)) { Icon(Icons.Filled.KeyboardArrowRight, "Right", tint = C.Text) }
-                    Box(Modifier.align(Alignment.Center).size(78.dp).clip(CircleShape).background(C.Accent).clickable { key("SELECT") },
-                        contentAlignment = Alignment.Center) { Text("OK", color = C.Bg, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
-                }
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    K("Back", "BACK", Modifier.weight(1f)); K("Presets", "PRESET", Modifier.weight(1f)); K("Source", "SOURCE", Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    K("⏮", "PREV", Modifier.weight(1f)); K("⏯", "PLAY", Modifier.weight(1f)); K("⏹", "STOP", Modifier.weight(1f)); K("⏭", "NEXT", Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    K("Vol −", "VOLDOWN", Modifier.weight(1f)); K("Mute", "MUTE", Modifier.weight(1f)); K("Vol +", "VOLUP", Modifier.weight(1f))
-                }
-            }
-        }
-        Text("Power is on the top bar. The first press of each key may take a moment while the app learns your stereo's key names.",
-            color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 14.dp))
-    }
-}
-
-
-// ====================================================================== Custom station test (Pro)
-
-@Composable
-fun StreamTestScreen(vm: StereoViewModel) {
+private fun ReportProblem(vm: StereoViewModel, version: String) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val host = vm.stereoHost()
-    var probe by remember { mutableStateOf<String?>(null) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("My station") }
-    var url by remember { mutableStateOf("http://") }
-    var result by remember { mutableStateOf("") }
-    val candidates = remember { vm.streamCandidates() }
-    LaunchedEffect(Unit) { probe = vm.streamProbe() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Text("Step 1 · The stereo's own web page", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-        Text("Stereo address: ${host.ifBlank { "not connected" }}", color = C.Muted, fontSize = 13.sp)
-        if (host.isNotBlank()) GhostButton("Open http://$host/ in the browser",
-            { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://$host/"))) }, Modifier.fillMaxWidth().padding(top = 6.dp))
-
-        Text("Step 2 · What the stereo reports", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))
-        val p = probe
-        if (p == null) Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            BusySpinner(); Text("  Asking the stereo…", color = C.Muted, fontSize = 13.sp)
-        } else Panel(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-            Text(p, color = C.Text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(12.dp))
+    var progress by remember { mutableStateOf("") }
+    var report by remember { mutableStateOf<String?>(null) }
+    Panel(Modifier.fillMaxWidth().padding(top = 18.dp)) {
+        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.BugReport, null, tint = C.Accent)
+            Text("Report a problem", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 12.dp))
+            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, if (expanded) "Close" else "Open", tint = C.Muted)
         }
-
-        Text("Step 3 · Try a URL", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))
-        OutlinedTextField(name, { name = it }, label = { Text("Station name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(url, { url = it.trim() }, label = { Text("Stream URL") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri))
-        if (candidates.isEmpty()) Text("This stereo offers no command that takes a URL.", color = C.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-        candidates.forEach { a ->
-            OutlinedButton(onClick = {
-                busy = true; result = ""
-                scope.launch { result = vm.tryStream(a, name.trim(), url); busy = false }
-            }, enabled = !busy && url.length > 10, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text("Try with $a", color = C.Accent) }
+        if (expanded) Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+            Text("Creates a detailed report of your stereo and the app, to help find the cause of a problem. It takes about a minute and briefly nudges a few settings (such as volume) and puts them back. Network addresses are hidden.",
+                color = C.Muted, fontSize = 13.sp)
+            PrimaryButton(if (busy) "Creating report…" else "Create diagnostic report", {
+                busy = true; report = null
+                scope.launch {
+                    report = vm.createDiagnosticReport(version) { progress = it }
+                    progress = ""; busy = false
+                }
+            }, Modifier.fillMaxWidth().padding(top = 10.dp), enabled = !busy && vm.device != null)
+            if (vm.device == null) Text("Connect to a stereo first.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+            if (busy && progress.isNotBlank()) Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                BusySpinner(); Text("  $progress", color = C.Muted, fontSize = 12.sp, maxLines = 2)
+            }
+            report?.let { r ->
+                Box(Modifier.fillMaxWidth().padding(top = 10.dp).height(320.dp).clip(RoundedCornerShape(10.dp)).background(C.Bg)
+                    .verticalScroll(rememberScrollState()).padding(10.dp)) {
+                    Text(r, color = C.Text, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                }
+            }
+            GhostButton("Share bug report", {
+                val i = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Cambridge Connect Legacy diagnostic report")
+                    .putExtra(Intent.EXTRA_STREAM, ReportProvider.uri())
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                ctx.startActivity(Intent.createChooser(i, "Share bug report"))
+            }, Modifier.fillMaxWidth().padding(top = 10.dp), enabled = report != null && !busy)
+            val note = androidx.compose.ui.text.buildAnnotatedString {
+                append("To report a bug, go to the app's ")
+                withLink(androidx.compose.ui.text.LinkAnnotation.Url(WEBSITE,
+                    androidx.compose.ui.text.TextLinkStyles(androidx.compose.ui.text.SpanStyle(color = C.Accent,
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)))) { append("website") }
+                append(" and tap Report a bug. This opens an issue on GitHub. Please attach the diagnostics file.")
+            }
+            Text(note, color = C.Muted, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 12.dp))
         }
-        if (busy) Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            BusySpinner(); Text("  Trying… (about 5 seconds)", color = C.Muted, fontSize = 13.sp)
-        }
-        if (result.isNotBlank()) Panel(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-            Text(result, color = C.Text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(12.dp))
-        }
-        GhostButton("Share results with the developer", {
-            shareText(ctx, "Custom station test", StereoCheck.sanitize((probe ?: "") + "\n\n— Try —\n" + result, host))
-        }, Modifier.fillMaxWidth().padding(top = 16.dp))
-        Text("Shared results hide your network addresses.", color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 24.dp))
     }
 }
