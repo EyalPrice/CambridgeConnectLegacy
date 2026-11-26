@@ -86,6 +86,8 @@ data class StereoState(
 /** Holds the connection to one stereo and keeps its state fresh by polling. */
 /** One balance step = 1 dB (the stereo uses 1/256 dB units and works in whole decibels). */
 private const val BALANCE_UNIT = 256
+/** Balance range in dB either side. The stereo's own knob stops here, but over Wi-Fi it accepts more, so the app enforces it. */
+const val BALANCE_DEFAULT = 10
 
 class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -397,7 +399,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(inputs = ordered(inputs), volumeMax = max, volumeHard = hard, about = about,
                 bassMin = limInt("bassMin"), bassMax = limInt("bassMax"),
                 trebleMin = limInt("trebleMin"), trebleMax = limInt("trebleMax"),
-                balanceMin = limInt("balMinDb"), balanceMax = limInt("balMaxDb"),
+                balanceMin = limInt("balMinDb") ?: -BALANCE_DEFAULT, balanceMax = limInt("balMaxDb") ?: BALANCE_DEFAULT,
                 languages = names.zip(codes), language = language,
                 brightness = prefs.getInt("brightness", 2),
                 widgetInputs = (prefs.getString("widgetInputs", null) ?: "0,24,6").split(',')
@@ -414,16 +416,22 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadSound() {
+        val busy = _state.value.busy
+        val bass = if ("bass" in busy) _state.value.bass else out("GetToneCtrlBass")?.toIntOrNull()
+        val treble = if ("treble" in busy) _state.value.treble else out("GetToneCtrlTreble")?.toIntOrNull()
+        // The stereo reports balance in 1/256 dB; the app shows whole dB.
+        val bal = if ("balance" in busy) _state.value.balance
+            else out("GetBalanceDB")?.toIntOrNull()?.let { raw -> Math.round(raw.toFloat() / BALANCE_UNIT) }
+        // Balance range is ±10 dB unless this stereo reports more (for example set with its own knob).
+        if (bal != null && "balance" !in busy) {
+            if (bal > (_state.value.balanceMax ?: BALANCE_DEFAULT)) saveLimit("balMaxDb", bal)
+            if (bal < (_state.value.balanceMin ?: -BALANCE_DEFAULT)) saveLimit("balMinDb", bal)
+        }
         _state.update {
             it.copy(
-                bass = out("GetToneCtrlBass")?.toIntOrNull(),
-                treble = out("GetToneCtrlTreble")?.toIntOrNull(),
-                balance = out("GetBalanceDB")?.toIntOrNull()?.let { raw ->
-                    // Stereo reports 1/256 dB units; show it as steps, preferring the app's own value when they agree.
-                    val saved = prefs.getInt("balanceDb", 0)
-                    val fromStereo = Math.round(raw.toFloat() / BALANCE_UNIT)
-                    if (Math.abs(saved * BALANCE_UNIT - raw) < BALANCE_UNIT / 2) saved else fromStereo
-                },
+                bass = bass,
+                treble = treble,
+                balance = bal,
                 phaseInverted = out("GetAudioPhaseInverted")?.let { v -> v == "1" || v.equals("true", true) },
                 filter = out("GetAudioFilter"),
             )
@@ -447,7 +455,11 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Reads the live status. Returns false when the stereo did not answer. */
+    /** True while the Sound screen is open: polling then also re-reads bass, treble and balance. */
+    @Volatile var soundVisible = false
+
     private suspend fun refreshOnce(): Boolean = withContext(Dispatchers.IO) {
+        if (soundVisible && device != null) loadSound()
         val power = out("GetPowerState") ?: return@withContext false
         val src = out("GetAudioSourceByNumber")?.toIntOrNull() ?: -1
         val volTouched = System.currentTimeMillis() - lastVolumeTouch < 2500
@@ -763,10 +775,10 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         val action = if (which == "bass") "SetToneCtrlBass" else "SetToneCtrlTreble"
         val arg = if (which == "bass") "NewToneCtrlBassValue" else "NewToneCtrlTrebleValue"
         sendBusy(which, action, arg to v.toString()) {
-            loadSound()
             if (latestRequest[which] != v) return@sendBusy   // a newer press is on its way; judge that one instead
             val key = if (which == "bass") "bass" else "treble"
-            val read = { (if (which == "bass") _state.value.bass else _state.value.treble) }
+            // Read the stereo directly (the screen keeps showing the requested value while this control is busy).
+            val read = { out(if (which == "bass") "GetToneCtrlBass" else "GetToneCtrlTreble")?.toIntOrNull() }
             val got = read() ?: return@sendBusy
             if (got == v) return@sendBusy
             // Only learn a limit on a side that has none yet, only away from zero, and only if the stereo
@@ -776,9 +788,9 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             if (!learnTop && !learnBottom) return@sendBusy
             Thread.sleep(800)
             if (latestRequest[which] != v) return@sendBusy
-            loadSound()
             if (read() != got) return@sendBusy
             if (learnTop) saveLimit(key + "Max", got) else saveLimit(key + "Min", got)
+            _state.update { if (which == "bass") it.copy(bass = got) else it.copy(treble = got) }
         }
     }
 
@@ -790,7 +802,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val reported = out("GetVolumeMax")?.toIntOrNull()?.takeIf { it > 0 }
             _state.update {
-                it.copy(bassMin = null, bassMax = null, trebleMin = null, trebleMax = null, balanceMin = null, balanceMax = null,
+                it.copy(bassMin = null, bassMax = null, trebleMin = null, trebleMax = null, balanceMin = -BALANCE_DEFAULT, balanceMax = BALANCE_DEFAULT,
                     volumeMax = reported ?: maxOf(40, it.volume), volumeHard = reported != null)
             }
             toast("Learned limits forgotten. The app will learn them again as you use the stereo.")
@@ -828,22 +840,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(balance = steps) }
         prefs.edit().putInt("balanceDb", steps).apply()
         latestRequest["balance"] = steps
-        sendBusy("balance", "SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString()) {
-            if (latestRequest["balance"] != steps || steps == 0) return@sendBusy
-            val raw = out("GetBalanceDB")?.toIntOrNull() ?: return@sendBusy
-            val want = steps * BALANCE_UNIT
-            // Allow for rounding: only a gap of half a step or more means a limit.
-            if (Math.abs(want - raw) < BALANCE_UNIT / 2) return@sendBusy
-            val at = Math.round(raw.toFloat() / BALANCE_UNIT)
-            val learnRight = steps > 0 && at < steps && _state.value.balanceMax == null
-            val learnLeft = steps < 0 && at > steps && _state.value.balanceMin == null
-            if (!learnRight && !learnLeft) return@sendBusy
-            Thread.sleep(800)
-            if (latestRequest["balance"] != steps || out("GetBalanceDB")?.toIntOrNull() != raw) return@sendBusy
-            if (learnRight) saveLimit("balMaxDb", at) else saveLimit("balMinDb", at)
-            prefs.edit().putInt("balanceDb", at).apply()
-            _state.update { it.copy(balance = at) }
-        }
+        sendBusy("balance", "SetBalanceDB", "DesiredBalanceDB" to (steps * BALANCE_UNIT).toString())
     }
 
     fun resetTone() {

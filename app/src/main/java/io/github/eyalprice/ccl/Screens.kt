@@ -593,6 +593,7 @@ fun QueueScreen(st: StereoState, vm: StereoViewModel) {
 
 @Composable
 fun SoundScreen(st: StereoState, vm: StereoViewModel) {
+    DisposableEffect(Unit) { vm.soundVisible = true; onDispose { vm.soundVisible = false } }
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { vm.loadSound() } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Panel(Modifier.fillMaxWidth()) {
