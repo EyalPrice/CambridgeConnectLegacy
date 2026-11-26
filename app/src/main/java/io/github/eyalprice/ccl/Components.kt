@@ -314,12 +314,13 @@ fun SwitchRow(title: String, subtitle: String?, checked: Boolean, busy: Boolean 
 }
 
 @Composable
-fun RowItem(title: String, value: String? = null, onClick: (() -> Unit)? = null) {
+fun RowItem(title: String, value: String? = null, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, onClick: (() -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 50.dp).let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (icon != null) Icon(icon, null, tint = C.Accent, modifier = Modifier.padding(end = 10.dp).size(20.dp))
         Text(title, color = C.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
         if (value != null) Text(value, color = C.Muted, fontSize = 14.sp)
         if (onClick != null) Text("  ›", color = C.Muted, fontSize = 14.sp)

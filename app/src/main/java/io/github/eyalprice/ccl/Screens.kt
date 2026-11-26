@@ -688,7 +688,10 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         }
         SectionLabel(tx("section_app"))
         Panel(Modifier.fillMaxWidth()) {
-            RowItem(tx("app_language"), if (I18n.choice.isBlank()) tx("same_as_phone") else I18n.NAMES[I18n.choice] ?: I18n.choice) { appLangDialog = true }
+            // Not English? Add "(App language)" so anyone who picked a language by mistake can find the way back.
+            RowItem(tx("app_language") + if (I18n.lang.startsWith("en")) "" else " (App language)",
+                if (I18n.choice.isBlank()) tx("same_as_phone") else I18n.NAMES[I18n.choice] ?: I18n.choice,
+                icon = Icons.Outlined.Language) { appLangDialog = true }
             RowItem(tx("version"), version)
             RowItem(tx("updates"), update ?: tx("check_now")) {
                 if (update != null && update.startsWith(tx("update_new", "").trim())) open("https://github.com/EyalPrice/CambridgeConnectLegacy/releases/latest") else onCheckUpdate()
