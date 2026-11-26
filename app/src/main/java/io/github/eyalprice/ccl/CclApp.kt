@@ -18,7 +18,7 @@ class CclApp : Application() {
         super.onCreate()
         I18n.init(this)
         scope.launch {
-            stereo.state
+            kotlinx.coroutines.flow.combine(stereo.state, androidx.compose.runtime.snapshotFlow { I18n.lang }) { s, _ -> s }
                 .map { StereoWidget.Snapshot.of(it) }
                 .distinctUntilChanged()
                 .collect { StereoWidget.render(this@CclApp, it) }

@@ -107,18 +107,19 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
     var page by rememberSaveable { mutableStateOf<Page?>(null) }
     var powerOff by remember { mutableStateOf(false) }
     var update by remember { mutableStateOf<Pair<String, String>?>(null) }
-    var updateStatus by remember { mutableStateOf<String?>(null) }
+    // Kept as "which message", not finished text, so it follows a language change.
+    var updateStatus by remember { mutableStateOf<(() -> String)?>(null) }
     var checkTick by remember { mutableIntStateOf(0) }
     val snack = remember { SnackbarHostState() }
 
     LaunchedEffect(starts, checkTick) {
-        updateStatus = tx("checking")
+        updateStatus = { tx("checking") }
         val r = checkRelease(versionCode)
         update = r.newer
         updateStatus = when {
-            r.newer != null -> tx("update_new", r.newer.first)
-            r.failed -> tx("update_failed")
-            else -> tx("up_to_date")
+            r.newer != null -> { { tx("update_new", r.newer.first) } }
+            r.failed -> { { tx("update_failed") } }
+            else -> { { tx("up_to_date") } }
         }
         if (checkTick > 0 && r.newer == null && !r.failed) vm.toast(tx("newest_version"))
     }
@@ -167,7 +168,7 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
             Box(Modifier.weight(1f)) {
                 when (page) {
                     Page.SOUND -> SoundScreen(st, vm)
-                    Page.SETTINGS -> SettingsScreen(st, vm, version, updateStatus) { checkTick++ }
+                    Page.SETTINGS -> SettingsScreen(st, vm, version, updateStatus?.invoke()) { checkTick++ }
                     Page.QUEUE -> QueueScreen(st, vm)
                     null -> when (tab) {
                         Tab.PLAY -> NowPlayingScreen(st, vm, onInputs = { tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE })

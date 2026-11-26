@@ -44,7 +44,8 @@ data class StereoState(
     val presets: List<Reciva.Preset> = emptyList(),
     val found: List<Upnp.Found> = emptyList(),
     /** Result line of the last network search, shown on the first-start screen. */
-    val searchInfo: String = "",
+    /** Result line of the last network search; a function so it is translated when drawn. */
+    val searchInfo: () -> String = { "" },
     val message: String? = null,
     val about: Map<String, String> = emptyMap(),
     val languages: List<Pair<String, String>> = emptyList(),
@@ -130,17 +131,18 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
     fun search(ip: String? = null) {
         _state.update { it.copy(conn = Conn.SEARCHING, found = emptyList()) }
         viewModelScope.launch(Dispatchers.IO) {
-            var info: String
+            var info: () -> String
             val found = try {
                 val list = Upnp.discover(getApplication<Application>(), ip, 5000)
                 // Read each device's description in parallel so one slow device doesn't hold up the rest.
                 list.map { f -> async { Upnp.peek(f) } }.forEach { it.await() }
                 val cam = list.count { it.cambridge }
-                info = if (list.isEmpty()) tx("no_devices")
-                else tx("devices_answered", list.size, cam)
+                info = if (list.isEmpty()) { { tx("no_devices") } }
+                else { { tx("devices_answered", list.size, cam) } }
                 list.sortedByDescending { it.cambridge }
             } catch (e: Exception) {
-                info = tx("search_failed", e.message ?: "")
+                val msg = e.message ?: ""
+                info = { tx("search_failed", msg) }
                 emptyList()
             }
             _state.update { it.copy(conn = if (device == null) Conn.NONE else it.conn, found = found, searchInfo = info) }

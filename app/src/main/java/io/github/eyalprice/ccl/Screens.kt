@@ -468,7 +468,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
         busy = true
         val top = vm.menuTop()
         menu = openRoot(vm, rootIcon, rootName)
-        error = if (menu == null) tx("music_menu_failed") else null
+        error = if (menu == null) "music_menu_failed" else null
         busy = false
     }
     Column(Modifier.fillMaxSize()) {
@@ -482,7 +482,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = C.Accent, strokeWidth = 2.dp)
         }
         error?.let {
-            Text(it, color = C.Muted, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp))
+            Text(tx(it), color = C.Muted, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp))
             val ctx = LocalContext.current
             Row(Modifier.padding(horizontal = 12.dp)) {
                 TextButton(onClick = {
@@ -490,7 +490,7 @@ fun MenuBrowser(vm: StereoViewModel, rootIcon: String, rootName: String, onPlayi
                     scope.launch {
                         menu = openRoot(vm, rootIcon, rootName)
                         depth = 0
-                        error = if (menu == null) tx("menu_still_failed") else null
+                        error = if (menu == null) "menu_still_failed" else null
                         busy = false
                     }
                 }) { Text(tx("try_again"), color = C.Accent) }
@@ -786,8 +786,8 @@ fun WelcomeScreen(st: StereoState, vm: StereoViewModel) {
                         }
                     }
                 }
-                if (st.searchInfo.isNotBlank() && st.conn == Conn.NONE) {
-                    Text(st.searchInfo, color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                if (st.searchInfo().isNotBlank() && st.conn == Conn.NONE) {
+                    Text(st.searchInfo(), color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                 }
                 if (others.isNotEmpty()) {
                     var showOthers by remember { mutableStateOf(false) }
