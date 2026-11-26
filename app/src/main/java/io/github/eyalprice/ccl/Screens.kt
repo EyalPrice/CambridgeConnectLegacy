@@ -700,9 +700,10 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
             RowItem(tx("change_stereo")) { vm.forget() }
         }
         SectionLabel(tx("feedback"))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GhostButton(tx("report_bug"), { issue("bug") }, Modifier.weight(1f))
-            GhostButton(tx("request_feature"), { issue("enhancement") }, Modifier.weight(1f))
+        // Stacked, full width: in several languages the two labels don't fit side by side.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            GhostButton(tx("report_bug"), { issue("bug") }, Modifier.fillMaxWidth())
+            GhostButton(tx("request_feature"), { issue("enhancement") }, Modifier.fillMaxWidth())
         }
         Text(tx("github_note"), color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         SectionLabel(tx("support"))
