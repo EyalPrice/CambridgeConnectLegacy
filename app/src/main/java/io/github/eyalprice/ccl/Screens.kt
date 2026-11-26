@@ -647,7 +647,8 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
     fun issue(kind: String) {
         val body = "**App:** $version\n**Android:** ${Build.VERSION.RELEASE} (${Build.MANUFACTURER} ${Build.MODEL})\n" +
             "**Stereo:** ${st.model} ${st.about["Firmware"] ?: ""}\n\n" +
-            (if (kind == "bug") "**What happened:**\n\n**What you expected:**\n\n(Please attach the diagnostic report: Settings → Report a problem → Create diagnostic report → Share report.)" else "**Your idea:**\n")
+            (if (kind == "bug") "**What happened:**\n\n**What you expected:**\n\n(Please attach the diagnostic report: Settings → Diagnostics → Create diagnostic report → Share report.)"
+             else "**Describe the feature request:**\n")
         open("https://github.com/EyalPrice/CambridgeConnectLegacy/issues/new?labels=$kind&title=&body=" + Uri.encode(body))
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
@@ -791,7 +792,7 @@ fun WelcomeScreen(st: StereoState, vm: StereoViewModel) {
     }
 }
 
-// ====================================================================== Report a problem (Settings)
+// ====================================================================== Diagnostics (Settings)
 
 private const val WEBSITE = "https://eyalprice.github.io/CambridgeConnectLegacy/#community"
 
@@ -807,7 +808,7 @@ private fun ReportProblem(vm: StereoViewModel, version: String) {
     Panel(Modifier.fillMaxWidth().padding(top = 18.dp)) {
         Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.BugReport, null, tint = C.Accent)
-            Text("Report a problem", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 12.dp))
+            Text("Diagnostics", color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 12.dp))
             Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, if (expanded) "Close" else "Open", tint = C.Muted)
         }
         if (expanded) Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {

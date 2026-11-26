@@ -258,7 +258,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ------------------------------------------------------------ diagnostic report (Settings → Report a problem)
+    // ------------------------------------------------------------ diagnostic report (Settings → Diagnostics)
 
     /**
      * Builds one detailed report: phone and app, the stereo and every command it offers, a full read of
@@ -596,7 +596,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             toast("Saving “${title.ifBlank { "current station" }}” to preset $n…")
             val ok = savePlayingTo(n, title)
             toast(if (ok) "Saved “${presetTitleCached(n) ?: title}” to preset $n."
-                  else "The stereo didn't save to preset $n. Try another slot, or create a diagnostic report (Settings › Report a problem).")
+                  else "The stereo didn't save to preset $n. Try another slot, or create a diagnostic report (Settings › Diagnostics).")
             refreshOnce()
         }
     }
@@ -1042,7 +1042,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             }
             val playingTitle = Reciva.playback(out("GetPlaybackDetails")).title.ifBlank { station.name }
             if (savePlayingTo(n, playingTitle)) toast("Saved “${presetTitleCached(n) ?: station.name}” to preset $n.")
-            else toast("The stereo didn't save “${station.name}” to preset $n. Try another slot, or create a diagnostic report (Settings › Report a problem).")
+            else toast("The stereo didn't save “${station.name}” to preset $n. Try another slot, or create a diagnostic report (Settings › Diagnostics).")
             refreshOnce()
         }
     }

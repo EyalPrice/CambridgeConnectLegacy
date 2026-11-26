@@ -32,7 +32,7 @@ keep controlling them from any Android phone, old or new.
 - **Settings**: stereo name, display brightness and language, firmware details and app updates.
 
 ## Report a problem
-In the app, open **Settings → Report a problem → Create diagnostic report**, then **Share bug report** to save
+In the app, open **Settings → Diagnostics → Create diagnostic report**, then **Share report** to save
 or send the file. Then [open a bug report](../../issues/new?labels=bug) and attach the file. Network addresses and
 most of the serial number are removed from the report.
 
