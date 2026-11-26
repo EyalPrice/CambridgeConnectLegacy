@@ -20,22 +20,30 @@ keep controlling them from any Android phone, old or new.
 3. Your phone and stereo must be on the same Wi-Fi network.
 
 ## Use
-- **Find stereo**: searches your Wi-Fi for UPnP devices. Tap your Cambridge Audio unit (marked ★), or type its IP
-  address (found in the stereo's *Network config* menu).
-- **Remote**: volume, mute and playback controls (when the stereo offers them), plus your own buttons.
-- **Commands**: every command the stereo exposes. Run one, then tap **Pin to remote** to turn it into a button,
-  for example to select an input.
-  **Share this list** exports the full command list as text. It leaves out your IP address. Attaching it to a GitHub
-  issue helps add built-in support for more models.
+- **Connect**: the app finds your stereo on your Wi-Fi by itself. If it doesn't, type the stereo's IP address
+  (shown in the stereo's *Network config* menu).
+- **Now Playing**: a real volume knob, play/pause, next and back. On internet radio, next and back (or a swipe
+  across the station card) step through your presets.
+- **Inputs**: one tap per input. Long-press a tile to rename it, move it, or add it to the home-screen widget.
+- **Radio**: your presets, plus station search by name, country or genre. Save any find to a preset slot.
+- **Sound**: bass, treble, balance, mute and phase. The app learns your stereo's limits as you use it.
+- **Lock screen & widget**: control play, volume and inputs without opening the app. The phone's volume
+  buttons work even when the screen is locked.
+- **Settings**: stereo name, display brightness and language, firmware details and app updates.
+
+## Report a problem
+In the app, open **Settings → Report a problem → Create diagnostic report**, then **Share bug report** to save
+or send the file. Then [open a bug report](../../issues/new?labels=bug) and attach the file. Network addresses and
+most of the serial number are removed from the report.
 
 ## How it works
 These streamers are UPnP devices. The app discovers them with SSDP and reads their service descriptions.
-It then sends standard UPnP SOAP commands over your local network only.
+It then sends UPnP SOAP commands over your local network only.
 It has no accounts, no cloud connection and no tracking.
 
 ## Status
-Early version, 0.1. Volume and playback use the standard UPnP services. Built-in input-switching buttons will be
-added once the command lists from real units have been mapped.
+Works well on a Minx Xi. NP30 and Stream Magic 6 (v1) owners: please report how it goes.
+For safety, the app never sends firmware-update commands, and full power-off needs a long press and a confirmation.
 
 ## Build it yourself
 Each push to `main` is built by GitHub Actions and published as a release. To build locally, run

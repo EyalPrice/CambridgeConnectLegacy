@@ -44,7 +44,6 @@ data class StereoState(
     val found: List<Upnp.Found> = emptyList(),
     /** Result line of the last network search, shown on the first-start screen. */
     val searchInfo: String = "",
-    val pro: Boolean = false,
     val message: String? = null,
     val about: Map<String, String> = emptyMap(),
     val languages: List<Pair<String, String>> = emptyList(),
@@ -90,7 +89,7 @@ private const val BALANCE_UNIT = 16
 class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = app.getSharedPreferences("ccl", Context.MODE_PRIVATE)
-    private val _state = MutableStateFlow(StereoState(pro = prefs.getBoolean("pro", false)))
+    private val _state = MutableStateFlow(StereoState())
     val state: StateFlow<StereoState> = _state
 
     var device: Upnp.Device? = null
@@ -122,11 +121,6 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toast(msg: String?) = _state.update { it.copy(message = msg) }
 
-    fun setPro(on: Boolean) {
-        prefs.edit().putBoolean("pro", on).apply()
-        _state.update { it.copy(pro = on) }
-    }
-
     // ------------------------------------------------------------ discovery & connect
 
     fun search(ip: String? = null) {
@@ -154,7 +148,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         pollJob?.cancel()
         device = null
         navId = null
-        _state.update { StereoState(pro = it.pro) }
+        _state.update { StereoState() }
         search()
     }
 
@@ -316,7 +310,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         text
     }
 
-    // ------------------------------------------------------------ custom station test (Pro)
+    // ------------------------------------------------------------ stream and web page probe (for the diagnostic report)
 
     fun stereoHost(): String = device?.host().orEmpty()
 
@@ -345,36 +339,6 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 append(a + ": " + (if (r?.ok() == true) r.out.entries.joinToString("; ") { "${it.key}=${it.value.take(300)}" } else "no answer") + "\n")
             }
             out("GetPlaybackDetails")?.let { append("GetPlaybackDetails: ${it.take(1200)}\n") }
-        }
-    }
-
-    fun streamCandidates(): List<String> = device?.let { d -> StreamTest.playCandidates(d).map { it.second.name } } ?: emptyList()
-
-    /** Tries to play [url] with the chosen command, then reports what the stereo says is playing. */
-    suspend fun tryStream(actionName: String, name: String, url: String): String = withContext(Dispatchers.IO) {
-        if (StreamTest.isDangerous(actionName)) return@withContext "Blocked for safety."
-        val d = device ?: return@withContext "Not connected to a stereo."
-        val (sv, a) = StreamTest.playCandidates(d).firstOrNull { it.second.name == actionName } ?: return@withContext "Command not found."
-        val args = a.inArgs().map { arg ->
-            val n = arg.name.lowercase()
-            arg.name to when {
-                n.contains("metadata") -> StreamTest.didl(name, url)
-                n.contains("url") || n.contains("uri") -> url
-                n.contains("name") || n.contains("title") -> name
-                else -> ""
-            }
-        }.filter { it.second.isNotEmpty() }.toTypedArray()
-        buildString {
-            val r = callBlocking(actionName, *args)
-            append("$actionName → " + (if (r == null) "no answer" else "HTTP ${r.httpCode}" + if (r.ok()) " OK" else ": " + r.body.take(300)) + "\n")
-            if (r?.ok() == true && actionName == "SetAVTransportURI") {
-                val p = callBlocking("Play", "Speed" to "1")
-                append("Play → " + (if (p?.ok() == true) "OK" else "HTTP ${p?.httpCode}") + "\n")
-            }
-            delay(5000)
-            append("After 5 s: transport=${out("GetTransportInfo") ?: "?"}\n")
-            out("GetPlaybackDetails")?.let { append("Playback: ${Reciva.playback(it).let { pb -> "${pb.state} · ${pb.title} · ${pb.format}" }}\n") }
-            refreshOnce()
         }
     }
 
@@ -616,7 +580,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             toast("Saving “${title.ifBlank { "current station" }}” to preset $n…")
             val ok = savePlayingTo(n, title)
             toast(if (ok) "Saved “${presetTitleCached(n) ?: title}” to preset $n."
-                  else "The stereo didn't save to preset $n. Try another slot, or share the debug log (Pro › Troubleshooting).")
+                  else "The stereo didn't save to preset $n. Try another slot, or create a diagnostic report (Settings › Report a problem).")
             refreshOnce()
         }
     }
@@ -1021,7 +985,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
             }
             val playingTitle = Reciva.playback(out("GetPlaybackDetails")).title.ifBlank { station.name }
             if (savePlayingTo(n, playingTitle)) toast("Saved “${presetTitleCached(n) ?: station.name}” to preset $n.")
-            else toast("The stereo didn't save “${station.name}” to preset $n. Try another slot, or share the debug log (Pro › Troubleshooting).")
+            else toast("The stereo didn't save “${station.name}” to preset $n. Try another slot, or create a diagnostic report (Settings › Report a problem).")
             refreshOnce()
         }
     }
@@ -1032,35 +996,6 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun queueDelete(id: Int) = send("DeletePlaylistTrack", "PlaylistTrackID" to id.toString())
     fun queueJump(id: Int) = send("SetCurrentPlaylistTrack", "CurrentPlaylistTrackID" to id.toString())
-
-    // ------------------------------------------------------------ virtual remote
-
-    private val keyAliases = mapOf(
-        "SELECT" to listOf("SELECT", "OK", "ENTER"), "BACK" to listOf("BACK", "RETURN"),
-        "PREV" to listOf("PREVIOUS", "PREV"), "VOLUP" to listOf("VOLUME_UP", "VOLUP", "VOL_UP"),
-        "VOLDOWN" to listOf("VOLUME_DOWN", "VOLDOWN", "VOL_DOWN"), "PLAY" to listOf("PLAY", "PLAY_PAUSE", "PLAYPAUSE"),
-    )
-
-    /**
-     * Sends a handset key. The firmware's key names aren't documented, so a few spellings are tried
-     * and the first one the stereo accepts is remembered.
-     */
-    suspend fun pressKey(key: String): String = withContext(Dispatchers.IO) {
-        if (!has("KeyPressed")) return@withContext "This stereo has no remote-key command."
-        prefs.getString("key_$key", null)?.split('|')?.takeIf { it.size == 2 }?.let { (name, dur) ->
-            val r = callBlocking("KeyPressed", "Key" to name, "Duration" to dur)
-            if (r != null && r.ok()) return@withContext "Sent $key"
-        }
-        val names = (keyAliases[key] ?: listOf(key)).flatMap { listOf(it, "KEY_$it", it.lowercase().replaceFirstChar { c -> c.uppercase() }) }
-        for (name in names) for (dur in listOf("SHORT", "0", "100")) {
-            val r = callBlocking("KeyPressed", "Key" to name, "Duration" to dur)
-            if (r != null && r.ok()) {
-                prefs.edit().putString("key_$key", "$name|$dur").apply()
-                return@withContext "Sent $key (as “$name”)"
-            }
-        }
-        "The stereo didn't accept the $key key."
-    }
 
     override fun onCleared() {
         pollJob?.cancel()

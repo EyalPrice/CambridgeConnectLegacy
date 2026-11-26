@@ -4,8 +4,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Pro-mode test for custom radio stations: finds the stereo's address and web page, looks for any
- * command that reports or accepts a stream URL, and tries playing a URL the user types in.
+ * Stream and web-page probe for the diagnostic report: reads the stereo's built-in web page and lists
+ * any command that reports or accepts a stream URL (read-only).
  */
 object StreamTest {
     /** Never offered for a URL test, whatever their arguments. */
@@ -20,12 +20,6 @@ object StreamTest {
         d.services.flatMap { s -> s.actions.map { s to it } }.filter { (_, a) ->
             val n = a.name.lowercase()
             urlWords.any { n.contains(it) } || a.args.any { arg -> arg.name.lowercase().let { it.contains("url") || it.contains("uri") } }
-        }
-
-    /** Commands that take a URL argument and could start playback (user picks one to try). */
-    fun playCandidates(d: Upnp.Device): List<Pair<Upnp.Service, Upnp.Action>> =
-        related(d).filter { (_, a) ->
-            !isDangerous(a.name) && a.inArgs().any { it.name.lowercase().let { n -> n.contains("url") || n.contains("uri") } }
         }
 
     fun fetch(url: String): String = try {
@@ -50,13 +44,4 @@ object StreamTest {
     } catch (e: Exception) {
         "No answer (${e.javaClass.simpleName}: ${e.message ?: ""})"
     }
-
-    fun xml(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
-
-    /** Minimal DIDL-Lite description so a UPnP player shows the station name. */
-    fun didl(name: String, url: String) =
-        "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
-            "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\"><item id=\"1\" parentID=\"0\" restricted=\"1\">" +
-            "<dc:title>${xml(name)}</dc:title><upnp:class>object.item.audioItem.audioBroadcast</upnp:class>" +
-            "<res protocolInfo=\"http-get:*:*:*\">${xml(url)}</res></item></DIDL-Lite>"
 }
