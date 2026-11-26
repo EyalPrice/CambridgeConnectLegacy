@@ -41,6 +41,9 @@ enum class Tab(private val labelKey: String, private val titleKey: String) {
     val title: String get() = tx(titleKey)
 }
 
+/** Screen arrangement: phone, tablet landscape (wide) or tablet portrait (tall). */
+enum class Layout { PHONE, WIDE, TALL }
+
 enum class Page(val titleKey: String) { SOUND("page_sound"), SETTINGS("page_settings"), QUEUE("page_queue") }
 
 class MainActivity : ComponentActivity() {
@@ -140,17 +143,54 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
         }
     }
     LaunchedEffect(st.message) { st.message?.let { snack.showSnackbar(it); vm.toast(null) } }
-    BackHandler(enabled = page != null) { page = null }
-    BackHandler(enabled = page == null && tab != Tab.PLAY) { tab = Tab.PLAY }
 
     if (st.name.isBlank()) {
         Box(Modifier.fillMaxSize().background(C.Bg).systemBarsPadding()) { WelcomeScreen(st, vm) }
         return
     }
 
+    // Phone, or a tablet: wide (Now Playing beside the tabs) or tall (Now Playing above them).
+    val cfg = androidx.compose.ui.platform.LocalConfiguration.current
+    val layout = when {
+        cfg.screenWidthDp >= 840 && cfg.screenHeightDp >= 560 -> Layout.WIDE
+        cfg.screenWidthDp >= 600 && cfg.screenHeightDp >= 840 -> Layout.TALL
+        else -> Layout.PHONE
+    }
+    // On a tablet Now Playing is always shown, so its tab is joined with the others.
+    val paneTab = if (tab == Tab.PLAY) Tab.INPUTS else tab
+    val toPlaying: () -> Unit = { if (layout == Layout.PHONE) tab = Tab.PLAY }
+    val pageContent: @Composable (Page) -> Unit = { pg ->
+        when (pg) {
+            Page.SOUND -> SoundScreen(st, vm)
+            Page.SETTINGS -> SettingsScreen(st, vm, version, updateStatus?.invoke()) { checkTick++ }
+            Page.QUEUE -> QueueScreen(st, vm)
+        }
+    }
+    val tabContent: @Composable (Tab) -> Unit = { t ->
+        when (t) {
+            Tab.PLAY -> NowPlayingScreen(st, vm, onInputs = { tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE })
+            Tab.INPUTS -> InputsScreen(st, vm) { }
+            Tab.RADIO -> RadioScreen(st, vm) { }
+            Tab.MUSIC -> MusicScreen(vm, onPlaying = toPlaying, onQueue = { page = Page.QUEUE })
+        }
+    }
+    BackHandler(enabled = page != null) { page = null }
+    BackHandler(enabled = page == null && tab != Tab.PLAY && layout == Layout.PHONE) { tab = Tab.PLAY }
+    val paneTabs = listOf(Tab.INPUTS, Tab.RADIO, Tab.MUSIC)
+    val rightPane: @Composable ColumnScope.() -> Unit = {
+        if (page != null) {
+            BackRow { page = null }
+            Box(Modifier.weight(1f)) { pageContent(page!!) }
+        } else {
+            Segmented(paneTabs.map { it.label }, paneTabs.indexOf(paneTab), { tab = paneTabs[it] },
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp).widthIn(max = 520.dp))
+            Box(Modifier.weight(1f)) { tabContent(paneTab) }
+        }
+    }
+
     Scaffold(containerColor = C.Bg, snackbarHost = { SnackbarHost(snack) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {
-            TopBar(page?.let { tx(it.titleKey) } ?: tab.title, st,
+            TopBar(page?.let { tx(it.titleKey) } ?: (if (layout == Layout.PHONE) tab else paneTab).title, st,
                 onSound = { page = Page.SOUND }, onSettings = { page = Page.SETTINGS },
                 onPower = { vm.togglePower() }, onPowerHold = { powerOff = true })
             update?.let { (tag, url) ->
@@ -160,50 +200,53 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
                 st.conn == Conn.UNREACHABLE -> Banner(tx("banner_unreachable", st.name), tx("retry")) { vm.connect(vm.device?.location ?: "") }
                 st.standby -> Banner(tx("banner_standby", st.name), tx("wake_up")) { vm.power("ON") }
             }
-            if (page != null) {
-                Row(Modifier.fillMaxWidth().clickable { page = null }.padding(horizontal = 12.dp, vertical = 2.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, tx("back"), tint = C.Muted, modifier = Modifier.size(18.dp))
-                    Text("  " + tx("back"), color = C.Muted, fontSize = 13.sp)
-                }
-            }
-            Box(Modifier.weight(1f)) {
-                when (page) {
-                    Page.SOUND -> SoundScreen(st, vm)
-                    Page.SETTINGS -> SettingsScreen(st, vm, version, updateStatus?.invoke()) { checkTick++ }
-                    Page.QUEUE -> QueueScreen(st, vm)
-                    null -> when (tab) {
-                        Tab.PLAY -> NowPlayingScreen(st, vm, onInputs = { tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE })
-                        Tab.INPUTS -> InputsScreen(st, vm) { }
-                        Tab.RADIO -> RadioScreen(st, vm) { }
-                        Tab.MUSIC -> MusicScreen(vm, onPlaying = { tab = Tab.PLAY }, onQueue = { page = Page.QUEUE })
+            when (layout) {
+                Layout.PHONE -> {
+                    if (page != null) BackRow { page = null }
+                    Box(Modifier.weight(1f)) {
+                        if (page != null) pageContent(page!!) else tabContent(tab)
+                    }
+                    if (tab != Tab.PLAY || page != null) {
+                        val t = when {
+                            st.isSpotify -> st.playback.title.ifBlank { "Spotify" }
+                            st.hasMetadata -> st.playback.title.ifBlank { st.sourceName }
+                            else -> st.sourceName
+                        }
+                        MiniPlayer(st, t, onOpen = { page = null; tab = Tab.PLAY }, vm = vm)
+                    }
+                NavigationBar(containerColor = C.Bar) {
+                    Tab.entries.forEach { t ->
+                        NavigationBarItem(
+                            selected = page == null && tab == t,
+                            onClick = { page = null; tab = t },
+                            icon = {
+                                Icon(when (t) {
+                                    Tab.PLAY -> Icons.Outlined.PlayCircle
+                                    Tab.INPUTS -> Icons.Outlined.GridView
+                                    Tab.RADIO -> Icons.Outlined.Radio
+                                    Tab.MUSIC -> Icons.Outlined.LibraryMusic
+                                }, t.label)
+                            },
+                            label = { FitText(t.label, androidx.compose.ui.graphics.Color.Unspecified, 12.sp, minSize = 8.sp) },
+                            colors = NavigationBarItemDefaults.colors(selectedIconColor = C.Accent, selectedTextColor = C.Accent,
+                                indicatorColor = C.AccentBg, unselectedIconColor = C.Muted, unselectedTextColor = C.Muted),
+                        )
                     }
                 }
-            }
-            if (tab != Tab.PLAY || page != null) {
-                val t = when {
-                    st.isSpotify -> st.playback.title.ifBlank { "Spotify" }
-                    st.hasMetadata -> st.playback.title.ifBlank { st.sourceName }
-                    else -> st.sourceName
                 }
-                MiniPlayer(st, t, onOpen = { page = null; tab = Tab.PLAY }, vm = vm)
-            }
-            NavigationBar(containerColor = C.Bar) {
-                Tab.entries.forEach { t ->
-                    NavigationBarItem(
-                        selected = page == null && tab == t,
-                        onClick = { page = null; tab = t },
-                        icon = {
-                            Icon(when (t) {
-                                Tab.PLAY -> Icons.Outlined.PlayCircle
-                                Tab.INPUTS -> Icons.Outlined.GridView
-                                Tab.RADIO -> Icons.Outlined.Radio
-                                Tab.MUSIC -> Icons.Outlined.LibraryMusic
-                            }, t.label)
-                        },
-                        label = { FitText(t.label, androidx.compose.ui.graphics.Color.Unspecified, 12.sp, minSize = 8.sp) },
-                        colors = NavigationBarItemDefaults.colors(selectedIconColor = C.Accent, selectedTextColor = C.Accent,
-                            indicatorColor = C.AccentBg, unselectedIconColor = C.Muted, unselectedTextColor = C.Muted),
-                    )
+                Layout.WIDE -> Row(Modifier.weight(1f)) {
+                    // Tablet landscape: Now Playing always on the left, the other tabs on the right.
+                    Box(Modifier.width(440.dp).fillMaxHeight()) {
+                        NowPlayingScreen(st, vm, onInputs = { page = null; tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE })
+                    }
+                    VerticalDivider(color = C.Line)
+                    Column(Modifier.weight(1f).fillMaxHeight()) { rightPane() }
+                }
+                Layout.TALL -> {
+                    // Tablet portrait: Now Playing across the top, the other tabs below.
+                    NowPlayingScreen(st, vm, onInputs = { page = null; tab = Tab.INPUTS }, onQueue = { page = Page.QUEUE }, split = true)
+                    HorizontalDivider(color = C.Line)
+                    Column(Modifier.weight(1f).fillMaxWidth()) { rightPane() }
                 }
             }
         }
@@ -218,4 +261,13 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
         },
         dismissButton = { TextButton(onClick = { powerOff = false }) { Text(tx("cancel")) } },
     )
+}
+
+/** "← Back" row above Sound, Settings and Queue. */
+@Composable
+fun BackRow(onBack: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onBack).padding(horizontal = 12.dp, vertical = 2.dp)) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, tx("back"), tint = C.Muted, modifier = Modifier.size(18.dp))
+        Text("  " + tx("back"), color = C.Muted, fontSize = 13.sp)
+    }
 }

@@ -55,7 +55,7 @@ import java.io.File
 private fun fmt(sec: Int) = nx(String.format(java.util.Locale.ROOT, "%d:%02d", sec / 60, sec % 60))
 
 @Composable
-fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit, onQueue: () -> Unit) {
+fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit, onQueue: () -> Unit, split: Boolean = false) {
     val pb = st.playback
     val ctx = LocalContext.current
     val title: String
@@ -81,76 +81,95 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
     }
     val playing = st.transport == "PLAYING" || (st.isSpotify && pb.spotifyPlaying) || pb.state.equals("Playing", true)
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(onClick = onInputs, label = { Text(st.sourceName) },
-                leadingIcon = { Icon(Icons.Outlined.Input, null, tint = C.Accent, modifier = Modifier.size(16.dp)) },
-                trailingIcon = { Icon(Icons.Filled.ExpandMore, null, modifier = Modifier.size(16.dp)) })
-            if (st.isRadio && pb.format.isNotBlank()) {
-                AssistChip(onClick = {}, enabled = false, label = { Text(pb.format, fontSize = 12.sp) })
+    val top: @Composable () -> Unit = {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = onInputs, label = { Text(st.sourceName) },
+                    leadingIcon = { Icon(Icons.Outlined.Input, null, tint = C.Accent, modifier = Modifier.size(16.dp)) },
+                    trailingIcon = { Icon(Icons.Filled.ExpandMore, null, modifier = Modifier.size(16.dp)) })
+                if (st.isRadio && pb.format.isNotBlank()) {
+                    AssistChip(onClick = {}, enabled = false, label = { Text(pb.format, fontSize = 12.sp) })
+                }
             }
-        }
-        // Swipe the card: right-to-left = next, left-to-right = previous (same as the buttons).
-        var dragX by remember { mutableFloatStateOf(0f) }
-        val view = androidx.compose.ui.platform.LocalView.current
-        Panel(Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth()
-            .graphicsLayer { translationX = dragX * 0.35f }
-            .pointerInput(Unit) {
-                val limit = 60.dp.toPx()
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (dragX <= -limit) { vm.transport("Next"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
-                        else if (dragX >= limit) { vm.transport("Previous"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
-                        dragX = 0f
-                    },
-                    onDragCancel = { dragX = 0f },
-                ) { change, amount -> change.consume(); dragX += amount }
-            }) {
-            // Fixed height: long station names never push the controls down.
-            Row(Modifier.padding(12.dp).height(108.dp), verticalAlignment = Alignment.CenterVertically) {
-                ArtBox(if (st.hasMetadata) pb.artUrl else "", if (st.isSpotify) 96.dp else 72.dp)
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(label, color = C.Accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.3.sp, maxLines = 1)
-                        if (st.tuning) {
-                            CircularProgressIndicator(Modifier.padding(start = 8.dp).size(12.dp), color = C.Accent, strokeWidth = 1.5.dp)
-                            Text("  " + tx("tuning"), color = C.Muted, fontSize = 11.sp, maxLines = 1)
+    }
+    val card: @Composable () -> Unit = {
+            // Swipe the card: right-to-left = next, left-to-right = previous (same as the buttons).
+            var dragX by remember { mutableFloatStateOf(0f) }
+            val view = androidx.compose.ui.platform.LocalView.current
+            Panel(Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth()
+                .graphicsLayer { translationX = dragX * 0.35f }
+                .pointerInput(Unit) {
+                    val limit = 60.dp.toPx()
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (dragX <= -limit) { vm.transport("Next"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
+                            else if (dragX >= limit) { vm.transport("Previous"); view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
+                            dragX = 0f
+                        },
+                        onDragCancel = { dragX = 0f },
+                    ) { change, amount -> change.consume(); dragX += amount }
+                }) {
+                // Fixed height: long station names never push the controls down.
+                Row(Modifier.padding(12.dp).height(108.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ArtBox(if (st.hasMetadata) pb.artUrl else "", if (st.isSpotify) 96.dp else 72.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(label, color = C.Accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.3.sp, maxLines = 1)
+                            if (st.tuning) {
+                                CircularProgressIndicator(Modifier.padding(start = 8.dp).size(12.dp), color = C.Accent, strokeWidth = 1.5.dp)
+                                Text("  " + tx("tuning"), color = C.Muted, fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+                        Text(title, color = C.Text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(subtitle, color = C.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (st.isSpotify && st.spotifyDur > 0) Ltr {
+                    Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)) {
+                        LinearProgressIndicator(progress = { st.spotifyPos.toFloat() / st.spotifyDur }, color = C.Accent,
+                            trackColor = C.Line, modifier = Modifier.fillMaxWidth())
+                        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            Text(fmt(st.spotifyPos), color = C.Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                            if (pb.shuffle) Text(tx("shuffle") + "  ", color = C.Accent, fontSize = 11.sp)
+                            if (pb.repeat) Text(tx("repeat") + "  ", color = C.Accent, fontSize = 11.sp)
+                            Text(fmt(st.spotifyDur), color = C.Muted, fontSize = 11.sp)
                         }
                     }
-                    Text(title, color = C.Text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(subtitle, color = C.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (st.isSpotify && st.spotifyDur > 0) Ltr {
-                Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)) {
-                    LinearProgressIndicator(progress = { st.spotifyPos.toFloat() / st.spotifyDur }, color = C.Accent,
-                        trackColor = C.Line, modifier = Modifier.fillMaxWidth())
-                    Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        Text(fmt(st.spotifyPos), color = C.Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                        if (pb.shuffle) Text(tx("shuffle") + "  ", color = C.Accent, fontSize = 11.sp)
-                        if (pb.repeat) Text(tx("repeat") + "  ", color = C.Accent, fontSize = 11.sp)
-                        Text(fmt(st.spotifyDur), color = C.Muted, fontSize = 11.sp)
-                    }
-                }
-            }
-        }
+    }
+    val buttons: @Composable () -> Unit = {
         Ltr {
-        Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.transport("Previous") }) { Icon(Icons.Filled.SkipPrevious, tx("previous"), tint = C.Text) }
-            PlayButton(playing, st.playPending, 60.dp) { playPressed(ctx, st, vm, playing) }
-            IconButton(onClick = { vm.transport("Next") }) { Icon(Icons.Filled.SkipNext, tx("next"), tint = C.Text) }
+            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { vm.transport("Previous") }) { Icon(Icons.Filled.SkipPrevious, tx("previous"), tint = C.Text) }
+                PlayButton(playing, st.playPending, 60.dp) { playPressed(ctx, st, vm, playing) }
+                IconButton(onClick = { vm.transport("Next") }) { Icon(Icons.Filled.SkipNext, tx("next"), tint = C.Text) }
+            }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CircleIconButton(Icons.Filled.Remove, tx("volume_down"), { vm.volumeStep(-1) }, size = 52.dp)
-            VolumeKnob(st.volume, st.volumeMax, st.muted, onChange = { vm.setVolume(it) })
-            CircleIconButton(Icons.Filled.Add, tx("volume_up"), { vm.volumeStep(1) }, size = 52.dp)
+    }
+    val knob: @Composable () -> Unit = {
+        Ltr {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircleIconButton(Icons.Filled.Remove, tx("volume_down"), { vm.volumeStep(-1) }, size = 52.dp)
+                VolumeKnob(st.volume, st.volumeMax, st.muted, onChange = { vm.setVolume(it) })
+                CircleIconButton(Icons.Filled.Add, tx("volume_up"), { vm.volumeStep(1) }, size = 52.dp)
+            }
         }
+    }
+    val chips: @Composable () -> Unit = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                FilterChip(selected = st.muted, onClick = { vm.toggleMute() }, label = { Text(if (st.muted) tx("unmute") else tx("mute")) })
+                FilterChip(selected = false, onClick = onQueue, label = { Text(tx("page_queue")) })
+            }
+    }
+    if (split) {
+        // Tablet portrait: card and buttons beside the knob.
+        Row(Modifier.fillMaxWidth().padding(end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) { top(); card(); buttons(); chips() }
+            knob()
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-            FilterChip(selected = st.muted, onClick = { vm.toggleMute() }, label = { Text(if (st.muted) tx("unmute") else tx("mute")) })
-            FilterChip(selected = false, onClick = onQueue, label = { Text(tx("page_queue")) })
-        }
+    } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+        top(); card(); buttons(); knob(); chips()
         Text(tx("knob_hint"),
             color = C.Muted, fontSize = 11.sp, modifier = Modifier.padding(16.dp))
     }
@@ -168,9 +187,10 @@ fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tx("reading_inputs"), color = C.Muted) }
         return
     }
-    LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(20.dp, 8.dp),
+    // 2 columns on a phone, more on a tablet.
+    LazyVerticalGrid(GridCells.Adaptive(160.dp), contentPadding = PaddingValues(20.dp, 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
             Text(tx("inputs_hint"), color = C.Muted, fontSize = 13.sp)
         }
         items(st.inputs, key = { it.number }) { inp ->
@@ -199,7 +219,7 @@ fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
                 }
             }
         }
-        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Widgets, null, tint = C.Accent, modifier = Modifier.size(14.dp))
                 Text("  " + tx("widget_key", MAX_WIDGET), color = C.Muted, fontSize = 12.sp)
@@ -289,7 +309,9 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tx("reading_presets"), color = C.Muted) }
         return
     }
-    LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+    // One column on a phone, two on a tablet.
+    LazyVerticalGrid(GridCells.Adaptive(320.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items((1..count).toList()) { n ->
             val p = st.presets.firstOrNull { it.number == n }
             val on = p != null && st.playingPreset?.number == n
