@@ -188,7 +188,7 @@ fun InputsScreen(st: StereoState, vm: StereoViewModel, onPicked: () -> Unit) {
         return
     }
     // 2 columns on a phone, more on a tablet.
-    LazyVerticalGrid(GridCells.Adaptive(160.dp), contentPadding = PaddingValues(20.dp, 8.dp),
+    LazyVerticalGrid(GridCells.Adaptive(if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600) 180.dp else 140.dp), contentPadding = PaddingValues(20.dp, 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
             Text(tx("inputs_hint"), color = C.Muted, fontSize = 13.sp)
