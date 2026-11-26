@@ -396,10 +396,10 @@ private fun StationSearch(st: StereoState, vm: StereoViewModel, onPlaying: () ->
         var list by remember(kind) { mutableStateOf<List<StereoViewModel.Choice>?>(null) }
         var filter by remember(kind) { mutableStateOf("") }
         LaunchedEffect(kind) { list = if (kind == "country") vm.locations() else vm.genres() }
-        AlertDialog(onDismissRequest = { picker = null }, title = { Text(if (kind == "country") "Country" else "Genre") },
+        AlertDialog(onDismissRequest = { picker = null }, title = { Text(if (kind == "country") tx("country") else tx("genre")) },
             text = {
                 Column {
-                    SearchField(filter, { filter = it }, if (kind == "country") "Type a country" else "Type a genre")
+                    SearchField(filter, { filter = it }, if (kind == "country") tx("type_country") else tx("type_genre"))
                     val l = list
                     if (l == null) Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(18.dp), color = C.Accent, strokeWidth = 2.dp)
@@ -679,7 +679,10 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         }
         SectionLabel(tx("about_stereo"))
         Panel(Modifier.fillMaxWidth()) {
-            st.about.forEach { (k, v) -> RowItem(k, v) }
+            st.about.forEach { (k, v) ->
+                val label = when (k) { "Firmware" -> tx("about_firmware"); "Hardware" -> tx("about_hardware"); "Model" -> tx("about_model"); "Serial number" -> tx("about_serial"); else -> k }
+                RowItem(label, v)
+            }
             Text(tx("firmware_note"), color = C.Muted, fontSize = 12.sp,
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp))
         }
@@ -785,7 +788,7 @@ fun WelcomeScreen(st: StereoState, vm: StereoViewModel) {
                 if (others.isNotEmpty()) {
                     var showOthers by remember { mutableStateOf(false) }
                     TextButton(onClick = { showOthers = !showOthers }) {
-                        Text(if (showOthers) tx("hide_others") else "Show ${others.size} other device(s)", color = C.Accent)
+                        Text(if (showOthers) tx("hide_others") else tx("show_others", others.size), color = C.Accent)
                     }
                     if (showOthers) others.forEach { f ->
                         TextButton(onClick = { vm.connect(f.location) }) {
@@ -822,7 +825,7 @@ private fun ReportProblem(vm: StereoViewModel, version: String) {
         Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.BugReport, null, tint = C.Accent)
             Text(tx("diagnostics"), color = C.Text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 12.dp))
-            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, if (expanded) tx("close") else "Open", tint = C.Muted)
+            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, if (expanded) tx("close") else tx("open"), tint = C.Muted)
         }
         if (expanded) Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
             Text(tx("diag_text"),
