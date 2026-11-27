@@ -454,8 +454,11 @@ fun SpotifyButton() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val icon = remember {
         runCatching {
-            ctx.packageManager.getApplicationIcon("com.spotify.music")
-                .let { androidx.core.graphics.drawable.toBitmap(it, 96, 96) }.asImageBitmap()
+            val d = ctx.packageManager.getApplicationIcon("com.spotify.music")
+            val b = android.graphics.Bitmap.createBitmap(96, 96, android.graphics.Bitmap.Config.ARGB_8888)
+            d.setBounds(0, 0, 96, 96)
+            d.draw(android.graphics.Canvas(b))
+            b.asImageBitmap()
         }.getOrNull()
     }
     Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "Spotify") { openSpotify(ctx) }
