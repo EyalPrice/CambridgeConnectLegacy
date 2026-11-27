@@ -30,6 +30,7 @@ keep controlling them from any Android phone, old or new.
 - **Lock screen & widget**: control play, volume and inputs without opening the app. The phone's volume
   buttons work even when the screen is locked.
 - **Settings**: stereo name, display brightness and language, firmware details and app updates.
+- **Languages**: 17 languages, following your phone or chosen in Settings: English (US and UK), Català, Dansk, Deutsch, Español, Suomi, Français, Italiano, Norsk, Nederlands, Polski, Português, Русский, Svenska, עברית and العربية (right to left).
 
 ## Report a problem
 In the app, open **Settings → Diagnostics → Create diagnostic report**, then **Share report** to save
