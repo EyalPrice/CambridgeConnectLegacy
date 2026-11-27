@@ -82,12 +82,17 @@ fun NowPlayingScreen(st: StereoState, vm: StereoViewModel, onInputs: () -> Unit,
     val playing = st.transport == "PLAYING" || (st.isSpotify && pb.spotifyPlaying) || pb.state.equals("Playing", true)
 
     val top: @Composable () -> Unit = {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
                 AssistChip(onClick = onInputs, label = { Text(st.sourceName) },
                     leadingIcon = { Icon(Icons.Outlined.Input, null, tint = C.Accent, modifier = Modifier.size(16.dp)) },
                     trailingIcon = { Icon(Icons.Filled.ExpandMore, null, modifier = Modifier.size(16.dp)) })
                 if (st.isRadio && pb.format.isNotBlank()) {
                     AssistChip(onClick = {}, enabled = false, label = { Text(pb.format, fontSize = 12.sp) })
+                }
+                if (st.isSpotify) {
+                    Spacer(Modifier.weight(1f))
+                    SpotifyButton()
                 }
             }
     }

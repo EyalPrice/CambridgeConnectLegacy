@@ -23,6 +23,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -401,13 +403,7 @@ fun playPressed(ctx: android.content.Context, st: StereoState, vm: StereoViewMod
     // Open the Spotify app only when no phone is connected to the stereo's Spotify yet;
     // a paused session that is already connected just resumes here.
     if (st.isSpotify && !playing && !st.playback.spotifyActive) {
-        val open = ctx.packageManager.getLaunchIntentForPackage("com.spotify.music")
-        if (open == null) {
-            android.widget.Toast.makeText(ctx, tx("spotify_not_installed"), android.widget.Toast.LENGTH_SHORT).show()
-        } else {
-            open.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            ctx.startActivity(open)
-        }
+        openSpotify(ctx)
         return
     }
     vm.togglePlay()
@@ -437,3 +433,34 @@ fun Ltr(content: @Composable () -> Unit) {
 
 /** The "more" arrow at the end of a row: points left in right-to-left languages. */
 fun chevron(): String = if (I18n.rtl) "‹" else "›"
+
+/** Opens the Spotify app (or brings it to the front); shows a message if it is not installed. */
+fun openSpotify(ctx: android.content.Context) {
+    val open = ctx.packageManager.getLaunchIntentForPackage("com.spotify.music")
+    if (open == null) {
+        android.widget.Toast.makeText(ctx, tx("spotify_not_installed"), android.widget.Toast.LENGTH_SHORT).show()
+    } else {
+        open.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        ctx.startActivity(open)
+    }
+}
+
+/**
+ * Round button that opens the Spotify app, shown on the Spotify input.
+ * It shows the Spotify app's own icon as installed on the phone; a plain "open" icon if Spotify is missing.
+ */
+@Composable
+fun SpotifyButton() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val icon = remember {
+        runCatching {
+            ctx.packageManager.getApplicationIcon("com.spotify.music")
+                .let { androidx.core.graphics.drawable.toBitmap(it, 96, 96) }.asImageBitmap()
+        }.getOrNull()
+    }
+    Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "Spotify") { openSpotify(ctx) }
+        .semantics { contentDescription = "Spotify" }, contentAlignment = Alignment.Center) {
+        if (icon != null) androidx.compose.foundation.Image(icon, null, Modifier.size(36.dp).clip(CircleShape))
+        else Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = C.Text, modifier = Modifier.size(22.dp))
+    }
+}
