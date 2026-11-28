@@ -1028,16 +1028,35 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             toast(tx("saving_to", station.name, n))
             val before = presetTitle(n)
+            log("Save search result: slot $n before='${before ?: ""}', station='${station.name}' id=${station.id}")
+            // The slot counts as saved only if it now holds this station, read twice so a
+            // half-updated list from the stereo can't look like success.
+            suspend fun stuck(): String? {
+                delay(700)
+                val a = presetTitle(n)
+                val changed = !a.isNullOrBlank() && a != before
+                if (!(matches(a, station.name) || (changed && before.isNullOrBlank()) || (changed && !matches(before, station.name)))) {
+                    log("Save check: slot $n now='${a ?: ""}' → not saved"); return null
+                }
+                delay(1500)
+                val b = presetTitle(n)
+                val ok = b == a
+                log("Save check: slot $n now='${a ?: ""}', again='${b ?: ""}' → ${if (ok) "saved" else "not saved"}")
+                return if (ok) b else null
+            }
             for (menuId in listOf("0", "")) {
                 val r = callBlocking("SetPreset", "NewPresetNumberValue" to n.toString(),
                     "NewPresetStationIdValue" to station.id, "NewPresetMenuIdValue" to menuId, timeoutMs = 20000)
-                if (r != null && r.ok()) {
-                    val now = presetTitle(n)
-                    if (matches(now, station.name) || (now != null && now != before && now.isNotBlank())) {
-                        toast(tx("saved_to", now, n))
-                        return@launch
-                    }
-                }
+                if (r != null && r.ok()) stuck()?.let { toast(tx("saved_to", it, n)); return@launch }
+            }
+            // A slot that already holds a station may refuse to be overwritten: clear it, then store again.
+            if (!before.isNullOrBlank()) {
+                log("Save: slot $n did not change; clearing it and storing again")
+                callBlocking("DeletePreset", "PresetNumber" to n.toString())
+                delay(600)
+                val r = callBlocking("SetPreset", "NewPresetNumberValue" to n.toString(),
+                    "NewPresetStationIdValue" to station.id, "NewPresetMenuIdValue" to "0", timeoutMs = 20000)
+                if (r != null && r.ok()) stuck()?.let { toast(tx("saved_to", it, n)); return@launch }
             }
             // Fall back: play it, wait for it to start, then save what is playing.
             callBlocking("SetStationId", "NewStationIdValue" to station.id, timeoutMs = 20000)
