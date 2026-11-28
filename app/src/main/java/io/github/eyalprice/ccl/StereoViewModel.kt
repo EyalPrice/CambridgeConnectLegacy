@@ -656,6 +656,104 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deletePreset(n: Int) = send("DeletePreset", "PresetNumber" to n.toString()) { loadPresets() }
 
+    // ------------------------------------------------------------ move and swap presets
+    // The stereo cannot copy a preset directly (SetPreset fails, and its stream address does not play),
+    // so a preset is moved by playing it and saving it into the new slot. The old slot is cleared
+    // only after the new one is confirmed, so a station is never lost.
+
+    @Volatile private var moving = false
+
+    fun firstEmptySlot(): Int? {
+        val st = _state.value
+        return (1..st.presetCount).firstOrNull { n -> st.presets.none { it.number == n && it.title.isNotBlank() } }
+    }
+
+    /** True if the stereo marks preset [n] as the one playing now. */
+    private fun presetIsPlaying(n: Int): Boolean =
+        out("GetPresetList", "Start" to n.toString(), "End" to n.toString())?.contains("isPlaying=\"1\"") == true
+
+    /** Plays preset [from], saves it into empty slot [to], then clears [from]. */
+    private suspend fun moveOne(from: Int, to: Int): Boolean {
+        val title = presetTitle(from)
+        if (title.isNullOrBlank() || !presetTitle(to).isNullOrBlank()) return false
+        log("Move: preset $from '$title' → $to")
+        val r = callBlocking("PlayPreset", "NewPresetNumberValue" to from.toString(), timeoutMs = 20000)
+        if (r == null || !r.ok()) { log("Move: preset $from would not play"); return false }
+        var playing = false
+        for (i in 0 until 25) {
+            delay(1000)
+            val pb = Reciva.playback(out("GetPlaybackDetails"))
+            if (pb.state.equals("Playing", true) && (matches(pb.title, title) || presetIsPlaying(from))) { playing = true; break }
+        }
+        if (!playing) { log("Move: '$title' did not start; nothing changed"); return false }
+        if (!savePlayingTo(to, title)) { log("Move: saving into $to failed; nothing changed"); return false }
+        callBlocking("DeletePreset", "PresetNumber" to from.toString())
+        delay(500)
+        loadPresets()
+        log("Move: done, preset $from cleared")
+        return true
+    }
+
+    /** Afterwards, go back to what was playing before (another input, or the same station in its new slot). */
+    private suspend fun restoreAfterMove(source: Int, preset: Int?, map: Map<Int, Int>) {
+        if (source != 0) callBlocking("SetAudioSourceByNumber", "NewAudioSourceValue" to source.toString())
+        else if (preset != null) {
+            val n = map[preset] ?: preset
+            _state.update { it.copy(lastPreset = n) }
+            callBlocking("PlayPreset", "NewPresetNumberValue" to n.toString())
+        }
+    }
+
+    fun movePreset(from: Int, to: Int) {
+        if (moving) { toast(tx("busy_moving")); return }
+        moving = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val st = _state.value
+                val source = st.sourceNumber; val prev = st.playingPreset?.number
+                val title = presetTitle(from).orEmpty()
+                toast(tx("moving", title, to))
+                if (source != 0) callBlocking("SetAudioSourceByNumber", "NewAudioSourceValue" to "0")
+                if (moveOne(from, to)) {
+                    toast(tx("moved", title, to))
+                    restoreAfterMove(source, prev, mapOf(from to to))
+                } else {
+                    toast(tx("move_failed", title))
+                    restoreAfterMove(source, prev, emptyMap())
+                }
+            } finally {
+                moving = false
+                refreshOnce()
+            }
+        }
+    }
+
+    /** Swaps presets [a] and [b] through an empty slot: a → spare, b → a, spare → b. */
+    fun swapPresets(a: Int, b: Int) {
+        if (moving) { toast(tx("busy_moving")); return }
+        val spare = firstEmptySlot() ?: run { toast(tx("need_empty")); return }
+        moving = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val st = _state.value
+                val source = st.sourceNumber; val prev = st.playingPreset?.number
+                val ta = presetTitle(a).orEmpty(); val tb = presetTitle(b).orEmpty()
+                toast(tx("swapping", a, b))
+                if (source != 0) callBlocking("SetAudioSourceByNumber", "NewAudioSourceValue" to "0")
+                log("Swap: $a '$ta' <-> $b '$tb' via empty slot $spare")
+                when {
+                    !moveOne(a, spare) -> { toast(tx("move_failed", ta)); restoreAfterMove(source, prev, emptyMap()) }
+                    !moveOne(b, a) -> { toast(tx("swap_stopped", tb, ta, spare)); restoreAfterMove(source, prev, mapOf(a to spare)) }
+                    !moveOne(spare, b) -> { toast(tx("swap_stopped", ta, ta, spare)); restoreAfterMove(source, prev, mapOf(a to spare, b to a)) }
+                    else -> { toast(tx("swapped", a, b)); restoreAfterMove(source, prev, mapOf(a to b, b to a)) }
+                }
+            } finally {
+                moving = false
+                refreshOnce()
+            }
+        }
+    }
+
     /** Last preset started via next/back, so repeated presses keep stepping even before the title updates. */
     @Volatile private var lastStepPreset = 0
     @Volatile private var pendingStepTitle: String? = null

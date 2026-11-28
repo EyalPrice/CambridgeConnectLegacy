@@ -309,6 +309,8 @@ fun RadioScreen(st: StereoState, vm: StereoViewModel, onPlaying: () -> Unit) {
 @Composable
 private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Unit) {
     var options by remember { mutableStateOf<Int?>(null) }
+    // Move or swap: which preset, and whether the second pick is an empty slot (move) or a used one (swap).
+    var pickFor by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
     val count = st.presetCount.coerceAtLeast(st.presets.maxOfOrNull { it.number } ?: 0)
     if (count == 0) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tx("reading_presets"), color = C.Muted) }
@@ -350,12 +352,40 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
                         Text(if (p == null) tx("save_here", st.playback.title.ifBlank { tx("current_station") }) else tx("replace_with", st.playback.title.ifBlank { tx("current_station") }))
                     } else Text(tx("switch_to_radio"), color = C.Muted)
                     if (p != null) {
+                        val hasEmpty = (1..count).any { k -> st.presets.none { it.number == k } }
+                        TextButton(onClick = { pickFor = n to true; options = null }, enabled = hasEmpty) { Text(tx("move_to")) }
+                        TextButton(onClick = { pickFor = n to false; options = null }, enabled = hasEmpty) { Text(tx("swap_with")) }
+                        if (!hasEmpty) Text(tx("need_empty"), color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp))
                         if (!confirmDelete) TextButton(onClick = { confirmDelete = true }) { Text(tx("delete_preset"), color = C.Danger) }
                         else TextButton(onClick = { vm.deletePreset(n); options = null }) { Text(tx("tap_again_delete", p.title), color = C.Danger) }
                     }
                 }
             },
             confirmButton = { TextButton(onClick = { options = null }) { Text(tx("close")) } })
+    }
+    pickFor?.let { (from, move) ->
+        val src = st.presets.firstOrNull { it.number == from }
+        val targets = (1..count).filter { k -> k != from && (st.presets.any { it.number == k } != move) }
+        AlertDialog(onDismissRequest = { pickFor = null },
+            title = { Text(tx(if (move) "choose_empty" else "choose_swap")) },
+            text = {
+                Column {
+                    src?.let { Text(tx("preset_n", from) + " · " + it.title, color = C.Muted, fontSize = 13.sp) }
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        items(targets) { k ->
+                            val t = st.presets.firstOrNull { it.number == k }
+                            TextButton(onClick = {
+                                pickFor = null
+                                if (move) vm.movePreset(from, k) else vm.swapPresets(from, k)
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(nx(k) + " · " + (t?.title ?: tx("empty")), modifier = Modifier.fillMaxWidth(),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { pickFor = null }) { Text(tx("cancel")) } })
     }
 }
 
