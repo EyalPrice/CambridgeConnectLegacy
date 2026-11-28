@@ -257,7 +257,7 @@ fun App(vm: StereoViewModel, version: String, versionCode: Long, starts: Int) {
         androidx.compose.ui.window.Dialog(onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
             Panel(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(18.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(28.dp), color = C.Accent, strokeWidth = 3.dp)
                     Spacer(Modifier.width(16.dp))
                     Text(msg(), color = C.Text, fontSize = 14.sp)
