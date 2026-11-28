@@ -307,7 +307,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         sb.append("Presets: ${st.presets.count { it.title.isNotBlank() }} of ${st.presetCount} used · last preset started: ${st.lastPreset}\n")
         sb.append("Playback: state=${st.playback.state} transport=${st.transport} title=${st.playback.title} format=${st.playback.format} spotifyActive=${st.playback.spotifyActive}\n")
         sb.append("Display: brightness=${st.brightness} language=${st.language}\n")
-        sb.append("About: " + st.about.filterKeys { it != "Serial number" }.entries.joinToString { "${it.key}=${it.value}" } + "\n")
+        sb.append("About: " + st.about.filterKeys { it != "Serial number" && it != "IP address" }.entries.joinToString { "${it.key}=${it.value}" } + "\n")
 
         sb.append("\n##### 5. COMMANDS THE STEREO OFFERS (${d.services.sumOf { it.actions.size }})\n")
         d.services.forEach { sv ->
@@ -400,6 +400,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         // Shown in full here (it stays on the phone); shared reports and logs still hide most of it.
         out("GetSerialNumber")?.let { about["Serial number"] = it }
         device?.let { about["Model"] = "${it.modelName} ${it.modelNumber}".trim() }
+        // Shown in Settings so the stereo's own web page can be opened from a computer; hidden in the report.
+        device?.host()?.takeIf { it.isNotBlank() }?.let { about["IP address"] = it }
         val langs = callBlocking("GetDisplayLanguages")?.out
         val names = langs?.get("RetLanguageListValue")?.split(',') ?: emptyList()
         val codes = langs?.get("RetIsoCodeListValue")?.split(',') ?: emptyList()

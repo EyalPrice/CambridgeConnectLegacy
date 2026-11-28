@@ -710,7 +710,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         SectionLabel(tx("about_stereo"))
         Panel(Modifier.fillMaxWidth()) {
             st.about.forEach { (k, v) ->
-                val label = when (k) { "Firmware" -> tx("about_firmware"); "Hardware" -> tx("about_hardware"); "Model" -> tx("about_model"); "Serial number" -> tx("about_serial"); else -> k }
+                val label = when (k) { "Firmware" -> tx("about_firmware"); "Hardware" -> tx("about_hardware"); "Model" -> tx("about_model"); "Serial number" -> tx("about_serial"); "IP address" -> tx("about_ip"); else -> k }
                 RowItem(label, v)
             }
             Text(tx("firmware_note"), color = C.Muted, fontSize = 12.sp,
