@@ -387,6 +387,9 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
                     OutlinedTextField(url, { url = it }, label = { Text(tx("field_url")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("https://") },
                         trailingIcon = { TextButton(onClick = { clip.getText()?.text?.let { url = it.trim() } }) { Text(tx("paste")) } })
+                    // Tested 28 Nov 2026: an https AAC stream did not play on the Minx Xi; http MP3 streams do.
+                    val u = url.trim().lowercase()
+                    if (u.startsWith("https://") || "aac" in u) Text(tx("url_warn"), color = C.Accent, fontSize = 12.sp)
                     if (old != null) Text(tx("replaces", old.title), color = C.Accent, fontSize = 13.sp)
                     Text(tx("url_help"), color = C.Muted, fontSize = 12.sp)
                 }
