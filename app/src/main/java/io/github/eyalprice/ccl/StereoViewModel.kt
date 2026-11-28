@@ -47,6 +47,8 @@ data class StereoState(
     /** Result line of the last network search; a function so it is translated when drawn. */
     val searchInfo: () -> String = { "" },
     val message: String? = null,
+    /** Long job in progress (moving or swapping presets): shown until it ends, and blocks other actions. */
+    val busyMsg: (() -> String)? = null,
     val about: Map<String, String> = emptyMap(),
     val languages: List<Pair<String, String>> = emptyList(),
     val language: String = "",
@@ -663,6 +665,8 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
 
     @Volatile private var moving = false
 
+    private fun setBusy(msg: (() -> String)?) = _state.update { it.copy(busyMsg = msg) }
+
     fun firstEmptySlot(): Int? {
         val st = _state.value
         return (1..st.presetCount).firstOrNull { n -> st.presets.none { it.number == n && it.title.isNotBlank() } }
@@ -712,7 +716,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 val st = _state.value
                 val source = st.sourceNumber; val prev = st.playingPreset?.number
                 val title = presetTitle(from).orEmpty()
-                toast(tx("moving", title, to))
+                setBusy { tx("moving", title, to) + "\n" + tx("please_wait_done") }
                 if (source != 0) callBlocking("SetAudioSourceByNumber", "NewAudioSourceValue" to "0")
                 if (moveOne(from, to)) {
                     toast(tx("moved", title, to))
@@ -722,8 +726,9 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                     restoreAfterMove(source, prev, emptyMap())
                 }
             } finally {
-                moving = false
                 refreshOnce()
+                moving = false
+                setBusy(null)
             }
         }
     }
@@ -738,18 +743,20 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 val st = _state.value
                 val source = st.sourceNumber; val prev = st.playingPreset?.number
                 val ta = presetTitle(a).orEmpty(); val tb = presetTitle(b).orEmpty()
-                toast(tx("swapping", a, b))
+                fun step(k: Int) = setBusy { tx("swapping", a, b) + "\n" + tx("step_of", k, 3) + " · " + tx("please_wait_done") }
+                step(1)
                 if (source != 0) callBlocking("SetAudioSourceByNumber", "NewAudioSourceValue" to "0")
                 log("Swap: $a '$ta' <-> $b '$tb' via empty slot $spare")
                 when {
                     !moveOne(a, spare) -> { toast(tx("move_failed", ta)); restoreAfterMove(source, prev, emptyMap()) }
-                    !moveOne(b, a) -> { toast(tx("swap_stopped", tb, ta, spare)); restoreAfterMove(source, prev, mapOf(a to spare)) }
-                    !moveOne(spare, b) -> { toast(tx("swap_stopped", ta, ta, spare)); restoreAfterMove(source, prev, mapOf(a to spare, b to a)) }
+                    run { step(2); !moveOne(b, a) } -> { toast(tx("swap_stopped", tb, ta, spare)); restoreAfterMove(source, prev, mapOf(a to spare)) }
+                    run { step(3); !moveOne(spare, b) } -> { toast(tx("swap_stopped", ta, ta, spare)); restoreAfterMove(source, prev, mapOf(a to spare, b to a)) }
                     else -> { toast(tx("swapped", a, b)); restoreAfterMove(source, prev, mapOf(a to b, b to a)) }
                 }
             } finally {
-                moving = false
                 refreshOnce()
+                moving = false
+                setBusy(null)
             }
         }
     }
