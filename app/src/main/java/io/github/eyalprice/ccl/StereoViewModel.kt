@@ -590,7 +590,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
      * stereo's own web page: POST /webmin/setDeviceName. The web page allows any text up to 63 characters.
      */
     fun renameStereo(newName: String) {
-        val name = newName.trim().take(63)
+        val name = newName.filter { it in ' '..'~' }.trim().take(63)
         val host = device?.host() ?: return
         if (name.isEmpty() || name == _state.value.name) return
         viewModelScope.launch(Dispatchers.IO) {

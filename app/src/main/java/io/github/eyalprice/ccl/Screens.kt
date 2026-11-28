@@ -705,7 +705,8 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
         AlertDialog(onDismissRequest = { nameDialog = false }, title = { Text(tx("rename_stereo")) },
             text = {
                 Column {
-                    OutlinedTextField(name, { name = it.take(63) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    // The stereo's own name editor offers only English letters, digits, space and common symbols (printable ASCII).
+                    OutlinedTextField(name, { v -> name = v.filter { it in ' '..'~' }.take(63) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                         supportingText = { Text(nx(name.length) + "/" + nx(63)) })
                     Text(tx("name_note"), color = C.Muted, fontSize = 12.sp)
                 }
