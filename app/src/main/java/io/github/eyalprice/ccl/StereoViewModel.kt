@@ -647,10 +647,7 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 if (saved()) return true
             }
         }
-        // Last try: clear the slot, then save again (some units won't overwrite a slot in an odd state).
-        callBlocking("DeletePreset", "PresetNumber" to n.toString())
-        delay(500)
-        callBlocking("SaveCurrentStationAsPreset", "NavigatorId" to (navId ?: ""), "PresetNumber" to n.toString(), timeoutMs = 20000)
+        // Never clear the slot to retry: if saving fails, the slot must keep its old station.
         delay(800)
         return saved()
     }
@@ -1049,15 +1046,6 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                     "NewPresetStationIdValue" to station.id, "NewPresetMenuIdValue" to menuId, timeoutMs = 20000)
                 if (r != null && r.ok()) stuck()?.let { toast(tx("saved_to", it, n)); return@launch }
             }
-            // A slot that already holds a station may refuse to be overwritten: clear it, then store again.
-            if (!before.isNullOrBlank()) {
-                log("Save: slot $n did not change; clearing it and storing again")
-                callBlocking("DeletePreset", "PresetNumber" to n.toString())
-                delay(600)
-                val r = callBlocking("SetPreset", "NewPresetNumberValue" to n.toString(),
-                    "NewPresetStationIdValue" to station.id, "NewPresetMenuIdValue" to "0", timeoutMs = 20000)
-                if (r != null && r.ok()) stuck()?.let { toast(tx("saved_to", it, n)); return@launch }
-            }
             // Fall back: play it, wait for it to start, then save what is playing.
             callBlocking("SetStationId", "NewStationIdValue" to station.id, timeoutMs = 20000)
             var playing = false
@@ -1067,7 +1055,10 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
                 if (pb.state.equals("Playing", true) && matches(pb.title, station.name)) { playing = true; break }
             }
             if (!playing) {
+                // Nothing was changed: the slot keeps its station.
+                log("Save: '${station.name}' did not start playing; slot $n left unchanged")
                 toast(tx("didnt_start", station.name))
+                refreshOnce()
                 return@launch
             }
             val playingTitle = Reciva.playback(out("GetPlaybackDetails")).title.ifBlank { station.name }
