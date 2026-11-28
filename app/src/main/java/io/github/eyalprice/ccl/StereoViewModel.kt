@@ -585,6 +585,32 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         sendBusy("input", "SetAudioSourceByNumber", "NewAudioSourceValue" to n.toString())
     }
 
+    /**
+     * Renames the stereo (also its name in Spotify's device list), using the same request as the
+     * stereo's own web page: POST /webmin/setDeviceName. The web page allows any text up to 63 characters.
+     */
+    fun renameStereo(newName: String) {
+        val name = newName.trim().take(63)
+        val host = device?.host() ?: return
+        if (name.isEmpty() || name == _state.value.name) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(busy = it.busy + "name") }
+            val ok = runCatching {
+                val c = java.net.URL("http://$host/webmin/setDeviceName").openConnection() as java.net.HttpURLConnection
+                c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 5000; c.readTimeout = 10000
+                c.setRequestProperty("Content-type", "application/x-www-form-urlencoded;charset=UTF-8")
+                val enc = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+                c.outputStream.use { it.write("DMPName=$enc".toByteArray()) }
+                val code = c.responseCode
+                val body = runCatching { c.inputStream.bufferedReader().readText() }.getOrDefault("")
+                log("setDeviceName → HTTP $code $body")
+                code == 200 && Regex("\"result\"\\s*:\\s*\"OK\"").containsMatchIn(body)
+            }.getOrElse { log("setDeviceName failed: ${it.message}"); false }
+            _state.update { it.copy(busy = it.busy - "name", name = if (ok) name else it.name) }
+            toast(if (ok) tx("stereo_renamed", name) else tx("rename_failed"))
+        }
+    }
+
     fun renameInput(n: Int, name: String) =
         send("SetAudioSourceName", "InAudioSource" to n.toString(), "InAudioSourceName" to name) {
             _state.update { s -> s.copy(inputs = s.inputs.map { if (it.number == n) it.copy(name = name) else it }) }

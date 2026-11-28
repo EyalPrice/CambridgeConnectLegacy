@@ -699,6 +699,20 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
     var langDialog by remember { mutableStateOf(false) }
     var forgetDialog by remember { mutableStateOf(false) }
     var appLangDialog by remember { mutableStateOf(false) }
+    var nameDialog by remember { mutableStateOf(false) }
+    if (nameDialog) {
+        var name by remember { mutableStateOf(st.name) }
+        AlertDialog(onDismissRequest = { nameDialog = false }, title = { Text(tx("rename_stereo")) },
+            text = {
+                Column {
+                    OutlinedTextField(name, { name = it.take(63) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(nx(name.length) + "/" + nx(63)) })
+                    Text(tx("name_note"), color = C.Muted, fontSize = 12.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.renameStereo(name); nameDialog = false }, enabled = name.isNotBlank()) { Text(tx("save")) } },
+            dismissButton = { TextButton(onClick = { nameDialog = false }) { Text(tx("cancel")) } })
+    }
     if (appLangDialog) AlertDialog(onDismissRequest = { appLangDialog = false }, title = { Text(tx("app_language")) },
         text = {
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
@@ -726,7 +740,7 @@ fun SettingsScreen(st: StereoState, vm: StereoViewModel, version: String, update
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         SectionLabel(tx("section_stereo"))
         Panel(Modifier.fillMaxWidth()) {
-            RowItem(tx("stereo_name"), st.name)
+            RowItem(tx("stereo_name"), if ("name" in st.busy) tx("changing") else st.name, editable = true) { nameDialog = true }
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(tx("brightness"), color = C.Text, fontSize = 14.sp)
