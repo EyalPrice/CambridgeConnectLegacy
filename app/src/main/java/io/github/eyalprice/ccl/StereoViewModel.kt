@@ -759,6 +759,47 @@ class StereoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Stores a station by its stream address into slot [n], using the same request as the stereo's web
+     * page (GET /service-management?action=addPreset), then plays it once to check it works.
+     */
+    fun addPresetByUrl(n: Int, name: String, url: String) {
+        if (moving) { toast(tx("busy_moving")); return }
+        val host = device?.host() ?: return
+        moving = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                setBusy { tx("adding", name, n) + "\n" + tx("please_wait_done") }
+                fun enc(v: String) = java.net.URLEncoder.encode(v, "UTF-8").replace("+", "%20")
+                val ok = runCatching {
+                    val c = java.net.URL("http://$host/service-management?action=addPreset&id=$n&name=${enc(name)}&url=${enc(url)}")
+                        .openConnection() as java.net.HttpURLConnection
+                    c.connectTimeout = 5000; c.readTimeout = 15000
+                    val code = c.responseCode
+                    val body = runCatching { c.inputStream.bufferedReader().readText() }.getOrDefault("")
+                    log("addPreset slot $n '$name' → HTTP $code $body")
+                    code == 200 && Regex("\"result\"\\s*:\\s*\"OK\"").containsMatchIn(body)
+                }.getOrElse { log("addPreset failed: ${it.message}"); false }
+                loadPresets()
+                if (!ok) { toast(tx("add_failed")); return@launch }
+                _state.update { it.copy(lastPreset = n) }
+                callBlocking("PlayPreset", "NewPresetNumberValue" to n.toString(), timeoutMs = 20000)
+                var playing = false
+                for (i in 0 until 20) {
+                    delay(1000)
+                    val pb = Reciva.playback(out("GetPlaybackDetails"))
+                    if (pb.state.equals("Playing", true) && (matches(pb.title, name) || presetIsPlaying(n))) { playing = true; break }
+                }
+                log("addPreset: slot $n ${if (playing) "plays" else "did not start"}")
+                toast(if (playing) tx("added", name, n) else tx("added_no_play", n))
+            } finally {
+                refreshOnce()
+                moving = false
+                setBusy(null)
+            }
+        }
+    }
+
     /** Swaps presets [a] and [b] through an empty slot: a → spare, b → a, spare → b. */
     fun swapPresets(a: Int, b: Int) {
         if (moving) { toast(tx("busy_moving")); return }

@@ -311,6 +311,8 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
     var options by remember { mutableStateOf<Int?>(null) }
     // Move or swap: which preset, and whether the second pick is an empty slot (move) or a used one (swap).
     var pickFor by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
+    // Add a station by its stream address into this slot (from the slot's long-press menu).
+    var urlFor by remember { mutableStateOf<Int?>(null) }
     val count = st.presetCount.coerceAtLeast(st.presets.maxOfOrNull { it.number } ?: 0)
     if (count == 0) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tx("reading_presets"), color = C.Muted) }
@@ -351,6 +353,7 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
                     if (st.isRadio) TextButton(onClick = { vm.saveCurrentAsPreset(n); options = null }) {
                         Text(if (p == null) tx("save_here", st.playback.title.ifBlank { tx("current_station") }) else tx("replace_with", st.playback.title.ifBlank { tx("current_station") }))
                     } else Text(tx("switch_to_radio"), color = C.Muted)
+                    TextButton(onClick = { urlFor = n; options = null }) { Text(tx("add_by_url")) }
                     if (p != null) {
                         val hasEmpty = (1..count).any { k -> st.presets.none { it.number == k } }
                         TextButton(onClick = { pickFor = n to true; options = null }, enabled = hasEmpty) { Text(tx("move_to")) }
@@ -362,6 +365,36 @@ private fun PresetList(st: StereoState, vm: StereoViewModel, onPlaying: () -> Un
                 }
             },
             confirmButton = { TextButton(onClick = { options = null }) { Text(tx("close")) } })
+    }
+    urlFor?.let { n ->
+        val old = st.presets.firstOrNull { it.number == n }
+        val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+        var name by remember(n) { mutableStateOf("") }
+        var url by remember(n) { mutableStateOf("") }
+        var confirm by remember(n) { mutableStateOf(false) }
+        val valid = name.isNotBlank() && (url.trim().startsWith("http://") || url.trim().startsWith("https://"))
+        if (confirm && old != null) AlertDialog(onDismissRequest = { confirm = false },
+            title = { Text(tx("replace_q", n)) },
+            text = { Text(tx("replace_text", old.title, name.trim())) },
+            confirmButton = { TextButton(onClick = { confirm = false; urlFor = null; vm.addPresetByUrl(n, name.trim(), url.trim()) }) { Text(tx("replace"), color = C.Danger) } },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text(tx("cancel")) } })
+        else AlertDialog(onDismissRequest = { urlFor = null },
+            title = { Text(tx("add_url_title")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tx("preset_n", n) + (old?.let { " · " + it.title } ?: ""), color = C.Muted, fontSize = 13.sp)
+                    OutlinedTextField(name, { name = it }, label = { Text(tx("field_name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(url, { url = it }, label = { Text(tx("field_url")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("https://") },
+                        trailingIcon = { TextButton(onClick = { clip.getText()?.text?.let { url = it.trim() } }) { Text(tx("paste")) } })
+                    if (old != null) Text(tx("replaces", old.title), color = C.Accent, fontSize = 13.sp)
+                    Text(tx("url_help"), color = C.Muted, fontSize = 12.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                if (old != null) confirm = true else { urlFor = null; vm.addPresetByUrl(n, name.trim(), url.trim()) }
+            }, enabled = valid) { Text(tx("save")) } },
+            dismissButton = { TextButton(onClick = { urlFor = null }) { Text(tx("cancel")) } })
     }
     pickFor?.let { (from, move) ->
         val src = st.presets.firstOrNull { it.number == from }
